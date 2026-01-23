@@ -165,22 +165,42 @@ while (true)
 }
 ```
 
-## Example Projects: MavLinkTx and MavLinkRx
+## Example Project: MavLinkConsole
 
-The `MavLinkTx` and `MavLinkRx` projects serve as practical examples demonstrating how to use the `MavLinkSharp` library for sending and receiving MAVLink messages over UDP. They are particularly useful for testing and development.
+The `MavLinkConsole` project serves as a practical example demonstrating how to use the `MavLinkSharp` library for both sending and receiving MAVLink messages over UDP, all within a single console application. It's particularly useful for testing, development, and quickly observing MAVLink communication.
 
-*   **`MavLinkTx` (Transmitter):** This console application generates and sends synthetic MAVLink messages (e.g., HEARTBEAT, GPS_RAW_INT, ATTITUDE) over UDP to the default MAVLink port (UDP 14550). It showcases how to construct MAVLink `Frame` objects and serialize them into byte arrays for transmission.
+*   **`MavLinkConsole` (Transmitter & Receiver):** This console application runs two concurrent tasks:
+    *   **Transmitter (Tx):** Generates and sends synthetic MAVLink messages (e.g., HEARTBEAT, GPS_RAW_INT, ATTITUDE) over UDP to the default MAVLink port (UDP 14550). It showcases how to construct MAVLink `Frame` objects and serialize them into byte arrays for transmission.
+    *   **Receiver (Rx):** Listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `Message.TryParse()` and access the decoded message fields. Rx messages are **highlighted in green** in the console output for easy differentiation.
 
-*   **`MavLinkRx` (Receiver):** This console application listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `Message.TryParse()` and access the decoded message fields.
-
-These examples provide a quick way to:
+This example provides a quick way to:
 *   **Test your MAVLinkSharp integration:** Verify that your application can correctly send and receive messages.
-*   **Debug MAVLink communication:** Use `MavLinkTx` to simulate a MAVLink source and `MavLinkRx` to inspect incoming messages.
+*   **Debug MAVLink communication:** Simulate both a MAVLink source and a listener within one application.
 *   **Understand basic usage:** See concrete implementations of MAVLink message handling.
 
-**To run these examples:**
+**To run this example:**
 
-1.  Navigate to the `MavLinkTx` or `MavLinkRx` project directory in your terminal.
+1.  Navigate to the `MavLinkConsole` project directory in your terminal.
 2.  Run the project using `dotnet run`.
-    *   For `MavLinkTx`, you will see messages being sent.
-    *   For `MavLinkRx`, it will wait for and display incoming MAVLink messages.
+    *   You will see both `Tx =>` (transmitted) and `Rx =>` (received, highlighted in green) messages in the same terminal.
+
+## Benchmark Project: MavLinkSharp.Benchmark
+
+The `MavLinkSharp.Benchmark` project is a dedicated suite for measuring the performance characteristics of the `MavLinkSharp` library. It leverages **BenchmarkDotNet** to provide accurate and reliable performance metrics for critical operations.
+
+Benchmarks currently included:
+*   **CRC Calculation:** Measures the speed of `Crc.Calculate()` for MAVLink packet checksums.
+*   **Message Parsing:** Evaluates the performance of `Message.TryParse()` for decoding incoming MAVLink packets.
+
+*   **MavLink Initialization:** Measures the initial loading and parsing time of MAVLink XML dialect files via `MavLink.Initialize()`.
+
+These benchmarks help identify performance bottlenecks and track optimizations within the library.
+
+**To run the benchmarks:**
+
+1.  Navigate to the `MavLinkSharp.Benchmark` project directory in your terminal.
+2.  Run the project in Release mode (essential for accurate results) using the following command:
+    ```bash
+    dotnet run -c Release --project MavLinkSharp.Benchmark/MavLinkSharp.Benchmark.csproj -- --filter *
+    ```
+    The `--filter *` argument ensures all benchmarks within the project are executed. BenchmarkDotNet will produce detailed reports in the `BenchmarkDotNet.Artifacts/results` directory.
