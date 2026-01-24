@@ -21,30 +21,24 @@ static class Receiver
                 
                 if (Message.TryParse(receivedBytes, out var frame))
                 {
-                    Console.ForegroundColor = ConsoleColor.Green; // Highlight Rx messages
-                    Console.WriteLine($"Rx => " +
+                    TerminalLayout.WriteRx($"Rx => " +
                         $"Seq: {frame.PacketSequence:D3}, " +
                         $"SysId: {frame.SystemId:X2}, " +
                         $"CompId: {frame.ComponentId:X2}, " +
                         $"Id: {frame.MessageId:X4}, " +
                         $"Name: {Metadata.Messages[frame.MessageId].Name}");
-                    Console.ResetColor();
                 }
                 else 
                 {
                     if (frame.ErrorReason != ErrorReason.None)
                     {
-                        Console.ForegroundColor = ConsoleColor.Red; // Highlight errors
-                        Console.WriteLine($"Rx: Error parsing packet: {frame.ErrorReason}");
-                        Console.ResetColor();
+                        TerminalLayout.WriteRx($"Rx: Error parsing packet: {frame.ErrorReason}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.ForegroundColor = ConsoleColor.Red; // Highlight exceptions
-                Console.WriteLine($"Rx: Error receiving or parsing packet: {ex.Message}");
-                Console.ResetColor();
+                TerminalLayout.WriteRx($"Rx: Error receiving or parsing packet: {ex.Message}");
             }
         }
     }

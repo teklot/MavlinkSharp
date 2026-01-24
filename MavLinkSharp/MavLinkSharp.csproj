@@ -6,10 +6,10 @@
 		<Nullable>disable</Nullable>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<Title>MAVLinkSharp</Title>
-		<Version>1.0.1</Version>
+		<Version>1.1.0</Version>
 		<Authors>TekLot,$(AssemblyName)</Authors>
 		<Description>MavlinkSharp is a lightweight .NET library for parsing MAVLink v1/v2 raw messages using standard or custom dialects. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.</Description>
-		<Copyright>Copyright © 2025 TekLot</Copyright>
+		<Copyright>Copyright © 2026 TekLot</Copyright>
 		<PackageId>MavLinkSharp</PackageId>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -26,8 +26,9 @@
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<PackageReleaseNotes>
-			- Updated package metadata
-			- Removed unintended dependency references
+			- Significant performance improvements (table-based CRC)
+			- Improved TryParse robustness with continuous marker searching
+			- Fixed error reason reporting for failed packet parsing
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

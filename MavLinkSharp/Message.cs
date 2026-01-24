@@ -158,37 +158,64 @@ namespace MavLinkSharp
             //}
             #endregion
 
-            // Improve performance using Array.IndexOf to leverage optimized native implementations
-            #region New Implementation
-            // Attempt to find MAVLink 2.0 start marker first.
-            // MAVLink 2.0 has a larger header and more features, so prioritizing it can simplify parsing logic
-            // if a stream contains a mix of both versions and V2 is preferred.
-            int v2Offset = Array.IndexOf(packet, Protocol.V2.StartMarker);
-
-            // If V2 start marker is found, try to parse as V2.
-            if (v2Offset != -1)
+            #region Implementation
+            int offset = 0;
+            while (offset < packet.Length)
             {
-                if (TryParseV2(packet, v2Offset, frame))
+                // Find the next occurrence of either marker
+                int v2Index = Array.IndexOf(packet, Protocol.V2.StartMarker, offset);
+                int v1Index = Array.IndexOf(packet, Protocol.V1.StartMarker, offset);
+
+                int nextMarkerIndex = -1;
+                bool isV2 = false;
+
+                if (v2Index != -1 && v1Index != -1)
                 {
-                    return true;
+                    if (v2Index <= v1Index)
+                    {
+                        nextMarkerIndex = v2Index;
+                        isV2 = true;
+                    }
+                    else
+                    {
+                        nextMarkerIndex = v1Index;
+                    }
                 }
-                // If V2 parsing failed, it might be a corrupted V2 packet or a V1 packet
-                // that coincidentally had a byte matching the V2 start marker.
-                // In this case, we fall through to try V1 parsing from the beginning of the packet.
+                else if (v2Index != -1)
+                {
+                    nextMarkerIndex = v2Index;
+                    isV2 = true;
+                }
+                else if (v1Index != -1)
+                {
+                    nextMarkerIndex = v1Index;
+                }
+
+                if (nextMarkerIndex == -1) break;
+
+                // Attempt to parse at the found marker
+                if (isV2)
+                {
+                    if (TryParseV2(packet, nextMarkerIndex, frame)) return true;
+                }
+                else
+                {
+                    if (TryParseV1(packet, nextMarkerIndex, frame)) return true;
+                }
+
+                // If parsing failed at this marker, skip it and continue searching from the next byte
+                offset = nextMarkerIndex + 1;
             }
 
-            // If V2 start marker was not found or V2 parsing failed, try to find MAVLink 1.0 start marker.
-            int v1Offset = Array.IndexOf(packet, Protocol.V1.StartMarker);
-
-            if (v1Offset != -1)
+            // If we found markers but none were valid, frame.ErrorReason will hold the last failure reason.
+            // If we never found any markers at all, set it to StartMarkerNotFound.
+            if (frame.ErrorReason == ErrorReason.None)
             {
-                return TryParseV1(packet, v1Offset, frame);
+                frame.ErrorReason = ErrorReason.StartMarkerNotFound;
             }
-            #endregion
-
-            frame.ErrorReason = ErrorReason.StartMarkerNotFound;
 
             return false;
+            #endregion
         }
 
         private static bool TryParseV2(byte[] packet, int offset, Frame frame)
@@ -292,10 +319,9 @@ namespace MavLinkSharp
 
             // The CRC covers the whole message including the CRC Extra,
             // except the magic byte and the signature (if present)
-            var bytes = new List<byte>(packet[1..ple])
-            {
-                message.CrcExtra
-            };
+            var bytes = new byte[ple];
+            packet.AsSpan(1..ple).CopyTo(bytes);
+            bytes[^1] = message.CrcExtra;
 
             var checksum = Crc.Calculate(bytes);
 
@@ -423,10 +449,9 @@ namespace MavLinkSharp
 
             // The CRC covers the whole message including the CRC Extra,
             // except the magic byte and the signature (if present)
-            var bytes = new List<byte>(packet[1..ple])
-            {
-                message.CrcExtra
-            };
+            var bytes = new byte[ple];
+            packet.AsSpan(1..ple).CopyTo(bytes);
+            bytes[^1] = message.CrcExtra;
 
             var checksum = Crc.Calculate(bytes);
 
@@ -472,7 +497,7 @@ namespace MavLinkSharp
                 }
             }
 
-            var crc = Crc.Calculate(extra);
+            var crc = Crc.Calculate(extra.ToArray());
 
             CrcExtra = (byte)((crc & 0xFF) ^ (crc >> 8));
         }

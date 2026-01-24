@@ -15,7 +15,7 @@ static class Transmitter
         var messageIds = Metadata.Messages.Keys.ToList();
         if (!messageIds.Any())
         {
-            Console.WriteLine("Tx: No MavLink messages found in common.xml. Exiting Tx thread.");
+            TerminalLayout.WriteTx("Tx: No MavLink messages found in common.xml. Exiting Tx thread.");
             return;
         }
 
@@ -31,38 +31,51 @@ static class Transmitter
 
                 byte[] payload = GeneratePayload(message, random);
 
-                // Manually construct MAVLink 2 packet
-                List<byte> packetBytes = new List<byte>();
+                // 1. Calculate lengths (Header is 10 bytes for MAVLink 2)
+                int headerLen = Protocol.V2.HeaderLength;
+                int payloadLen = payload.Length;
+                int totalPacketSize = headerLen + payloadLen + 2; // +2 for final CRC
 
-                // MAVLink 2 Header (10 bytes)
-                packetBytes.Add(Protocol.V2.StartMarker);                   // 0: Start Marker (0xFD)
-                packetBytes.Add((byte)payload.Length);                      // 1: Payload Length
-                packetBytes.Add(0);                                         // 2: Incompatibility Flags (0 for now)
-                packetBytes.Add(0);                                         // 3: Compatibility Flags (0 for now)
-                packetBytes.Add(packetSequence);                            // 4: Packet Sequence
-                packetBytes.Add(systemId);                                  // 5: System ID
-                packetBytes.Add(componentId);                               // 6: Component ID
-                packetBytes.Add((byte)(randomMessageId & 0xFF));            // 7: Message ID (LSB)
-                packetBytes.Add((byte)((randomMessageId >> 8) & 0xFF));     // 8: Message ID
-                packetBytes.Add((byte)((randomMessageId >> 16) & 0xFF));    // 9: Message ID (MSB)
+                // 2. Single allocation for the entire packet
+                byte[] packet = new byte[totalPacketSize];
+                Span<byte> packetBytes = packet.AsSpan();
 
-                // Payload
-                packetBytes.AddRange(payload);
+                // 3. Construct Header directly into the buffer
+                packetBytes[0] = Protocol.V2.StartMarker;                   // 0: Start Marker (0xFD)
+                packetBytes[1] = (byte)payloadLen;                          // 1: Payload Length
+                packetBytes[2] = 0;                                         // 2: Incompatibility Flags (0 for now)
+                packetBytes[3] = 0;                                         // 3: Compatibility Flags (0 for now)
+                packetBytes[4] = packetSequence;                            // 4: Packet Sequence
+                packetBytes[5] = systemId;                                  // 5: System ID
+                packetBytes[6] = componentId;                               // 6: Component ID
+                packetBytes[7] = (byte)(randomMessageId & 0xFF);            // 7: Message ID (LSB)
+                packetBytes[8] = (byte)((randomMessageId >> 8) & 0xFF);     // 8: Message ID
+                packetBytes[9] = (byte)((randomMessageId >> 16) & 0xFF);    // 9: Message ID (MSB)
 
-                // Calculate Checksum (MAVLink 2 CRC_EXTRA)
-                var checksumBytes = new List<byte>();
-                checksumBytes.AddRange(packetBytes.Skip(1).Take(Protocol.V2.HeaderLength - 1)); // From Payload Length to Message ID MSB
-                checksumBytes.AddRange(payload);
-                checksumBytes.Add(message.CrcExtra);
+                // 4. Copy Payload using Slice and CopyTo
+                payload.AsSpan().CopyTo(packetBytes[headerLen..]);
 
-                ushort checksum = Crc.Calculate(checksumBytes.ToArray());
+                // 5. Construct Checksum Buffer (Header minus StartMarker + Payload + CrcExtra)
+                // Total size for checksum = (10 - 1) + payloadLen + 1 = 10 + payloadLen
+                var checksumBuffer = new byte[headerLen + payloadLen];
+                Span<byte> checkSpan = checksumBuffer.AsSpan();
 
-                packetBytes.Add((byte)(checksum & 0xFF));                   // Checksum LSB
-                packetBytes.Add((byte)((checksum >> 8) & 0xFF));            // Checksum MSB
+                // Copy Header (excluding StartMarker) and Payload in one efficient operation
+                packetBytes[1..(headerLen + payloadLen)].CopyTo(checkSpan);
 
-                udpClient.Send(packetBytes.ToArray(), packetBytes.Count, remoteEndPoint);
+                // Append CRC_EXTRA to the last byte of the checksum buffer
+                checkSpan[^1] = message.CrcExtra;
 
-                Console.WriteLine($"Tx => " +
+                // 6. Calculate CRC
+                ushort checksum = Crc.Calculate(checksumBuffer);
+
+                // 7. Write CRC to the end of the packet (LSB first)
+                packetBytes[^2] = (byte)(checksum & 0xFF);                  // Checksum LSB
+                packetBytes[^1] = (byte)((checksum >> 8) & 0xFF);           // Checksum MSB
+
+                udpClient.Send(packetBytes.ToArray(), packetBytes.Length, remoteEndPoint);
+
+                TerminalLayout.WriteTx($"Tx => " +
                     $"Seq: {packetSequence:D3}, " +
                     $"SysId: {systemId:X2}, " +
                     $"CompId: {componentId:X2}, " +
@@ -73,7 +86,7 @@ static class Transmitter
             }
             else
             {
-                Console.WriteLine($"Tx: Could not find message definition for ID: {randomMessageId}");
+                TerminalLayout.WriteTx($"Tx: Could not find message definition for ID: {randomMessageId}");
             }
 
             Thread.Sleep(100); // Send message every 100ms

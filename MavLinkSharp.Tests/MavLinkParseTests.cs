@@ -7,6 +7,7 @@ namespace MavLinkSharp.Tests
         {
             // Arrange
             MavLink.Initialize("common.xml");
+            
             byte systemId = 1;
             byte componentId = 1;
             byte sequence = 0;
@@ -71,6 +72,7 @@ namespace MavLinkSharp.Tests
         {
             // Arrange
             MavLink.Initialize("common.xml");
+            
             // This packet has a valid header but an incorrect checksum
             var invalidPacket = new byte[] { 0xFD, 0x09, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00 };
 
@@ -83,14 +85,13 @@ namespace MavLinkSharp.Tests
             Assert.Equal(Enums.ErrorReason.BadChecksum, frame.ErrorReason);
         }
 
-
-
         [Fact]
         public void Parse_EmptyPacket_ReturnsFalse()
         {
             // Arrange
             MavLink.Initialize("common.xml");
-            var emptyPacket = new byte[0];
+            
+            var emptyPacket = Array.Empty<byte>();
 
             // Act
             var result = Message.TryParse(emptyPacket, out var frame);

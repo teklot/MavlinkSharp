@@ -12,7 +12,7 @@ class Program
 
     static async Task Main(string[] args)
     {
-        Console.WriteLine("MavLinkConsole started. Tx and Rx running concurrently in one terminal...");
+        TerminalLayout.Initialize();
 
         // Initialize MavLinkSharp with the common dialect
         MavLink.Initialize(DialectType.Common);
