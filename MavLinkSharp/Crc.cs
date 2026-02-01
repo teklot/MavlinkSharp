@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 
 namespace MavLinkSharp
 {
@@ -62,25 +61,6 @@ namespace MavLinkSharp
                 ch = (byte)(ch ^ (ch << 4));
                 return (UInt16)((crc >> 8) ^ (ch << 8) ^ (ch << 3) ^ (ch >> 4));
             }
-        }
-
-        /// <summary>
-        /// Calculates the CRC-16 value for a sequence of bytes.
-        /// </summary>
-        /// <param name="bytes">The sequence of bytes to calculate the CRC for.</param>
-        /// <param name="_">Used to keep the legacy code for a while.</param>
-        /// <returns>The final CRC-16 checksum.</returns>
-        [Obsolete("Use Calculate(ReadOnlySpan<byte>) for better performance.")]
-        public static UInt16 Calculate(IEnumerable<byte> bytes, bool _ = false)
-        {
-            UInt16 crc = Crc.Seed;
-
-            foreach (var b in bytes)
-            {
-                crc = Crc.Accumulate(b, crc);
-            }
-
-            return crc;
         }
 
         /// <summary>

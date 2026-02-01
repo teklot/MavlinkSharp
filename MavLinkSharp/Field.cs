@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Xml.Serialization;
 
@@ -218,46 +216,92 @@ namespace MavLinkSharp
         }
 
         /// <summary>
-        /// A lookup table (dictionary) that maps .NET data types to functions that can read them from a <see cref="BinaryReader"/>.
+        /// Reads the field's value (or array of values) from the provided <see cref="ReadOnlySpan{Byte}"/>.
         /// </summary>
-        private static readonly Dictionary<Type, Func<BinaryReader, object>> BinaryReaders = 
-            new Dictionary<Type, Func<BinaryReader, object>>() 
-            {
-                { typeof(Char),   (br) => br.ReadChar() },
-                { typeof(SByte),  (br) => br.ReadSByte() },
-                { typeof(Byte),   (br) => br.ReadByte() },
-                { typeof(Int16),  (br) => br.ReadInt16() },
-                { typeof(UInt16), (br) => br.ReadUInt16() },
-                { typeof(Int32),  (br) => br.ReadInt32() },
-                { typeof(UInt32), (br) => br.ReadUInt32() },
-                { typeof(Single), (br) => br.ReadSingle() },
-                { typeof(Int64),  (br) => br.ReadInt64() },
-                { typeof(UInt64), (br) => br.ReadUInt64() },
-                { typeof(Double), (br) => br.ReadDouble() },
-            };
-
-        /// <summary>
-        /// Reads the field's value (or array of values) from the provided <see cref="BinaryReader"/>.
-        /// </summary>
-        /// <param name="br">The <see cref="BinaryReader"/> to read the field data from.</param>
+        /// <param name="span">The <see cref="ReadOnlySpan{Byte}"/> to read the field data from.</param>
         /// <returns>The deserialized value of the field, or an array of values if the field is an array type.</returns>
-        internal object GetValue(BinaryReader br)
+        internal object GetValue(ref ReadOnlySpan<byte> span)
         {
-            var func = BinaryReaders[ElementType];
-
             if (DataType.IsArray)
             {
                 var values = Array.CreateInstance(ElementType, ArrayLength);
                 
                 for (var i = 0; i < ArrayLength; i++)
                 {
-                    values.SetValue(func(br), i);
+                    values.SetValue(ReadValue(ElementType, ref span), i);
                 }
 
                 return values;
             }
 
-            return func(br);
+            return ReadValue(ElementType, ref span);
+        }
+
+        private static object ReadValue(Type type, ref ReadOnlySpan<byte> span)
+        {
+            object result;
+
+            if (type == typeof(char))
+            {
+                result = (char)span[0];
+                span = span.Slice(1);
+            }
+            else if (type == typeof(sbyte))
+            {
+                result = (sbyte)span[0];
+                span = span.Slice(1);
+            }
+            else if (type == typeof(byte))
+            {
+                result = span[0];
+                span = span.Slice(1);
+            }
+            else if (type == typeof(short))
+            {
+                result = BinaryPrimitives.ReadInt16LittleEndian(span);
+                span = span.Slice(2);
+            }
+            else if (type == typeof(ushort))
+            {
+                result = BinaryPrimitives.ReadUInt16LittleEndian(span);
+                span = span.Slice(2);
+            }
+            else if (type == typeof(int))
+            {
+                result = BinaryPrimitives.ReadInt32LittleEndian(span);
+                span = span.Slice(4);
+            }
+            else if (type == typeof(uint))
+            {
+                result = BinaryPrimitives.ReadUInt32LittleEndian(span);
+                span = span.Slice(4);
+            }
+            else if (type == typeof(float))
+            {
+                result = BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(span));
+                span = span.Slice(4);
+            }
+            else if (type == typeof(long))
+            {
+                result = BinaryPrimitives.ReadInt64LittleEndian(span);
+                span = span.Slice(8);
+            }
+            else if (type == typeof(ulong))
+            {
+                result = BinaryPrimitives.ReadUInt64LittleEndian(span);
+                span = span.Slice(8);
+            }
+            else if (type == typeof(double))
+            {
+                result = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(span));
+                span = span.Slice(8);
+            }
+            else
+            {
+                throw new Exception($"Unknown type: {type}");
+            }
+
+            return result;
         }
         #endregion
     }

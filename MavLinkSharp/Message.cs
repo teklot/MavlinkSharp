@@ -1,7 +1,6 @@
 ﻿using MavLinkSharp.Enums;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml.Serialization;
@@ -126,16 +125,16 @@ namespace MavLinkSharp
         }
 
         /// <summary>
-        /// Attempts to parse a MAVLink frame from a raw byte array. It scans the array for a valid MAVLink 1 or MAVLink 2 start marker and processes the frame.
+        /// Attempts to parse a MAVLink frame from a raw byte span. It scans the span for a valid MAVLink 1 or MAVLink 2 start marker and processes the frame.
         /// </summary>
-        /// <param name="packet">The byte array that may contain a MAVLink frame.</param>
+        /// <param name="packet">The byte span that may contain a MAVLink frame.</param>
         /// <param name="frame">When this method returns, contains the parsed MAVLink frame if the parse was successful, or a frame with an <see cref="Frame.ErrorReason"/> if it failed.</param>
         /// <returns><c>true</c> if a valid MAVLink frame was successfully parsed; otherwise, <c>false</c>.</returns>
         /// <remarks>
         /// If parsing fails, the <see cref="Frame.ErrorReason"/> property on the output <paramref name="frame"/> will be set to indicate the specific cause of the failure (e.g., bad checksum, message not found).
         /// This method is the primary entry point for parsing incoming MAVLink data.
         /// </remarks>
-        public static bool TryParse(byte[] packet, out Frame frame)
+        public static bool TryParse(ReadOnlySpan<byte> packet, out Frame frame)
         {
             MavLink.ThrowIfNotInitialized();
 
@@ -162,9 +161,11 @@ namespace MavLinkSharp
             int offset = 0;
             while (offset < packet.Length)
             {
+                var slice = packet.Slice(offset);
+
                 // Find the next occurrence of either marker
-                int v2Index = Array.IndexOf(packet, Protocol.V2.StartMarker, offset);
-                int v1Index = Array.IndexOf(packet, Protocol.V1.StartMarker, offset);
+                int v2Index = slice.IndexOf(Protocol.V2.StartMarker);
+                int v1Index = slice.IndexOf(Protocol.V1.StartMarker);
 
                 int nextMarkerIndex = -1;
                 bool isV2 = false;
@@ -196,15 +197,15 @@ namespace MavLinkSharp
                 // Attempt to parse at the found marker
                 if (isV2)
                 {
-                    if (TryParseV2(packet, nextMarkerIndex, frame)) return true;
+                    if (TryParseV2(packet, offset + nextMarkerIndex, frame)) return true;
                 }
                 else
                 {
-                    if (TryParseV1(packet, nextMarkerIndex, frame)) return true;
+                    if (TryParseV1(packet, offset + nextMarkerIndex, frame)) return true;
                 }
 
                 // If parsing failed at this marker, skip it and continue searching from the next byte
-                offset = nextMarkerIndex + 1;
+                offset += nextMarkerIndex + 1;
             }
 
             // If we found markers but none were valid, frame.ErrorReason will hold the last failure reason.
@@ -218,7 +219,7 @@ namespace MavLinkSharp
             #endregion
         }
 
-        private static bool TryParseV2(byte[] packet, int offset, Frame frame)
+        private static bool TryParseV2(ReadOnlySpan<byte> packet, int offset, Frame frame)
         {
             frame.StartMarker = packet[offset];
 
@@ -280,19 +281,15 @@ namespace MavLinkSharp
 
             var message = Metadata.Messages[frame.MessageId];
 
-            MemoryStream stream;
-
-            var pls = Protocol.V2.OffsetPayload;
-            var ple = Protocol.V2.OffsetPayload + frame.PayloadLength;
+            var pls = offset + Protocol.V2.OffsetPayload;
+            var ple = offset + Protocol.V2.OffsetPayload + frame.PayloadLength;
 
             // Check for truncated message (e.g. no extensions)
             if (frame.PayloadLength <= message.PayloadLength)
             {
                 frame.Payload = new byte[message.PayloadLength];
 
-                packet[pls..ple].CopyTo(frame.Payload, 0);
-
-                stream = new MemoryStream(frame.Payload);
+                packet.Slice(pls, frame.PayloadLength).CopyTo(frame.Payload);
             }
             else
             {
@@ -301,11 +298,11 @@ namespace MavLinkSharp
                 return false;
             }
 
-            var br = new BinaryReader(stream);
+            ReadOnlySpan<byte> span = frame.Payload;
 
             foreach (var field in message.OrderedFields)
             {
-                frame.Fields[field.Name] = field.GetValue(br);
+                frame.Fields[field.Name] = field.GetValue(ref span);
             }
 
             if (packet.Length < ple + Protocol.V2.ChecksumLength)
@@ -319,11 +316,19 @@ namespace MavLinkSharp
 
             // The CRC covers the whole message including the CRC Extra,
             // except the magic byte and the signature (if present)
-            var bytes = new byte[ple];
-            packet.AsSpan(1..ple).CopyTo(bytes);
-            bytes[^1] = message.CrcExtra;
-
-            var checksum = Crc.Calculate(bytes);
+            // We need a temporary buffer or we slice efficiently.
+            // But we need to append CrcExtra.
+            // Allocating a buffer is easiest but we want to be efficient.
+            // Crc.Calculate(ReadOnlySpan) is available.
+            // We can calculate CRC of the slice (packet excluding start marker and checksum), 
+            // then Accumulate CrcExtra.
+            // Protocol.V2.OffsetPayload is where payload starts.
+            // ple is where payload ends.
+            // The span for CRC starts at offset + 1 (skipping start marker) and ends at ple.
+            
+            var crcSpan = packet.Slice(offset + 1, ple - (offset + 1));
+            var checksum = Crc.Calculate(crcSpan);
+            checksum = Crc.Accumulate(message.CrcExtra, checksum);
 
             if (frame.Checksum != checksum)
             {
@@ -345,16 +350,14 @@ namespace MavLinkSharp
                 }
                 else
                 {
-                    frame.Signature = new byte[Protocol.V2.SignatureLength];
-
-                    Array.Copy(packet, signatureOffset, frame.Signature, 0, Protocol.V2.SignatureLength);
+                    frame.Signature = packet.Slice(signatureOffset, Protocol.V2.SignatureLength).ToArray();
                 }
             }
 
             return true;
         }
 
-        private static bool TryParseV1(byte[] packet, int offset, Frame frame)
+        private static bool TryParseV1(ReadOnlySpan<byte> packet, int offset, Frame frame)
         {
             frame.StartMarker = packet[offset];
 
@@ -410,19 +413,15 @@ namespace MavLinkSharp
 
             var message = Metadata.Messages[frame.MessageId];
 
-            MemoryStream stream;
-
-            var pls = Protocol.V1.OffsetPayload;
-            var ple = Protocol.V1.OffsetPayload + frame.PayloadLength;
+            var pls = offset + Protocol.V1.OffsetPayload;
+            var ple = offset + Protocol.V1.OffsetPayload + frame.PayloadLength;
 
             // Check for truncated message (e.g. no extensions)
             if (frame.PayloadLength <= message.PayloadLength)
             {
                 frame.Payload = new byte[message.PayloadLength];
 
-                packet[pls..ple].CopyTo(frame.Payload, 0);
-
-                stream = new MemoryStream(frame.Payload);
+                packet.Slice(pls, frame.PayloadLength).CopyTo(frame.Payload);
             }
             else
             {
@@ -431,11 +430,11 @@ namespace MavLinkSharp
                 return false;
             }
 
-            var br = new BinaryReader(stream);
+            ReadOnlySpan<byte> span = frame.Payload;
 
             foreach (var field in message.OrderedFields)
             {
-                frame.Fields[field.Name] = field.GetValue(br);
+                frame.Fields[field.Name] = field.GetValue(ref span);
             }
 
             if (packet.Length < ple + Protocol.V1.ChecksumLength)
@@ -449,13 +448,11 @@ namespace MavLinkSharp
 
             // The CRC covers the whole message including the CRC Extra,
             // except the magic byte and the signature (if present)
-            var bytes = new byte[ple];
-            packet.AsSpan(1..ple).CopyTo(bytes);
-            bytes[^1] = message.CrcExtra;
+            var crcSpan = packet.Slice(offset + 1, ple - (offset + 1));
+            var crc = Crc.Calculate(crcSpan);
+            crc = Crc.Accumulate(message.CrcExtra, crc);
 
-            var checksum = Crc.Calculate(bytes);
-
-            if (frame.Checksum != checksum)
+            if (frame.Checksum != crc)
             {
                 frame.ErrorReason = ErrorReason.BadChecksum;
 
