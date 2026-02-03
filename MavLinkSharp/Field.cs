@@ -117,7 +117,7 @@ namespace MavLinkSharp
         /// <exception cref="Exception"></exception>
         public void SetDataType()
         {
-            var array = Type.Contains('[') && Type.Contains(']');
+            var array = Type.Contains("[") && Type.Contains("]");
 
             if (Type.StartsWith("char"))
             {
@@ -278,7 +278,7 @@ namespace MavLinkSharp
             }
             else if (type == typeof(float))
             {
-                result = BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(span));
+                result = BitHelpers.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(span));
                 span = span.Slice(4);
             }
             else if (type == typeof(long))
@@ -293,7 +293,7 @@ namespace MavLinkSharp
             }
             else if (type == typeof(double))
             {
-                result = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(span));
+                result = BitHelpers.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(span));
                 span = span.Slice(8);
             }
             else

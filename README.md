@@ -6,22 +6,21 @@ MavlinkSharp is a lightweight .NET library for parsing MAVLink v1/v2 raw message
  - **Runtime Dialect Parsing:** Consumes standard MAVLink XML dialect files at runtime. No code generation required.
  - **Extensible:** Supports custom dialects with no extra effort. Just provide the XML file.
  - **High Performance:** Designed for speed and low allocation to handle high-throughput MAVLink streams.
- - **Cross-Platform:** Can be used on any platform that supports .NET Standard 2.1 (Windows, Linux, macOS, etc.).
+ - **Cross-Platform:** Can be used on any platform that supports .NET Standard 2.0 (Windows, Linux, macOS, etc.).
  - **No External Dependencies:** The core parsing library is self-contained.
 
 ## Supported Frameworks
 
-`MavLinkSharp` targets **.NET Standard 2.1**, making it compatible with a wide range of modern .NET platforms. This choice ensures access to a rich set of APIs while maintaining broad compatibility for most new and existing projects.
+`MavLinkSharp` targets **.NET Standard 2.0**, providing broad compatibility across nearly all modern and legacy .NET platforms, including .NET Framework.
 
 ### Compatible Platforms:
 
-*   **.NET Core:** 3.0 and later.
-*   **Mono:** 6.4 and later.
-*   **Xamarin.iOS:** 12.16 and later.
-*   **Xamarin.Mac:** 5.18 and later.
-*   **Xamarin.Android:** 10.0 and later.
-
-**Important Note:** .NET Standard 2.1 is **NOT compatible with .NET Framework**. If you require compatibility with .NET Framework applications (versions 4.6.1 through 4.8), you would need to use a library targeting `.NET Standard 2.0`.
+*   **.NET Core / .NET (5+):** All versions.
+*   **.NET Framework:** 4.6.1 and later (4.7.2+ recommended).
+*   **Mono:** 5.4 and later.
+*   **Xamarin.iOS:** 10.14 and later.
+*   **Xamarin.Android:** 8.0 and later.
+*   **UWP:** 10.0.16299 and later.
 
 ## Getting Started
 

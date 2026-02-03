@@ -484,7 +484,7 @@ namespace MavLinkSharp
                 // TODO: create a get property for the curated field type, e.g. CuratedType
                 var position = field.Type.IndexOf("[");
 
-                var type = position > -1 ? field.Type[..position] : field.Type.Replace("_mavlink_version", "");
+                var type = position > -1 ? field.Type.Substring(0, position) : field.Type.Replace("_mavlink_version", "");
 
                 extra.AddRange(Encoding.UTF8.GetBytes($"{type} {field.Name} "));
 
