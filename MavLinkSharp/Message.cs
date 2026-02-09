@@ -59,9 +59,14 @@ namespace MavLinkSharp
 
         #region Helpers
         /// <summary>
-        /// Payload length in bytes.
+        /// Payload length in bytes (base fields only).
         /// </summary>
         public int PayloadLength { get; set; }
+
+        /// <summary>
+        /// Maximum payload length in bytes (including extensions).
+        /// </summary>
+        public int MaxPayloadLength { get; set; }
 
         /// <summary>
         /// The message base fields ordered according to the MAVLink spec.
@@ -232,7 +237,7 @@ namespace MavLinkSharp
                 return false;
             }
 
-            if (packet.Length > Protocol.V2.PacketLengthMax)
+            if (packetLength > Protocol.V2.PacketLengthMax)
             {
                 frame.ErrorReason = ErrorReason.FrameTooLong;
 
@@ -285,9 +290,9 @@ namespace MavLinkSharp
             var ple = offset + Protocol.V2.OffsetPayload + frame.PayloadLength;
 
             // Check for truncated message (e.g. no extensions)
-            if (frame.PayloadLength <= message.PayloadLength)
+            if (frame.PayloadLength <= message.MaxPayloadLength)
             {
-                frame.Payload = new byte[message.PayloadLength];
+                frame.Payload = new byte[message.MaxPayloadLength];
 
                 packet.Slice(pls, frame.PayloadLength).CopyTo(frame.Payload);
             }

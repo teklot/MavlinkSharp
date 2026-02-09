@@ -7,7 +7,7 @@ MavlinkSharp is a lightweight .NET library for parsing MAVLink v1/v2 raw message
  - **Extensible:** Supports custom dialects with no extra effort. Just provide the XML file.
  - **High Performance:** Designed for speed and low allocation to handle high-throughput MAVLink streams.
  - **Cross-Platform:** Can be used on any platform that supports .NET Standard 2.0 (Windows, Linux, macOS, etc.).
- - **No External Dependencies:** The core parsing library is self-contained.
+ - **Minimal Dependencies:** Only requires `System.Memory` for modern memory-efficient parsing.
 
 ## Supported Frameworks
 
@@ -170,7 +170,7 @@ The `MavLinkConsole` project serves as a practical example demonstrating how to 
 
 *   **`MavLinkConsole` (Transmitter & Receiver):** This console application runs two concurrent tasks:
     *   **Transmitter (Tx):** Generates and sends synthetic MAVLink messages (e.g., HEARTBEAT, GPS_RAW_INT, ATTITUDE) over UDP to the default MAVLink port (UDP 14550). It showcases how to construct MAVLink `Frame` objects and serialize them into byte arrays for transmission.
-    *   **Receiver (Rx):** Listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `Message.TryParse()` and access the decoded message fields. Rx messages are **highlighted in green** in the console output for easy differentiation.
+    *   **Receiver (Rx):** Listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `Message.TryParse()` and access the decoded message fields. Tx and Rx are displayed in separate halves of the screen. See the source code for details.
 
 This example provides a quick way to:
 *   **Test your MAVLinkSharp integration:** Verify that your application can correctly send and receive messages.
@@ -181,7 +181,7 @@ This example provides a quick way to:
 
 1.  Navigate to the `MavLinkConsole` project directory in your terminal.
 2.  Run the project using `dotnet run`.
-    *   You will see both `Tx =>` (transmitted) and `Rx =>` (received, highlighted in green) messages in the same terminal.
+    *   You will see both `Tx =>` (transmitted) and `Rx =>` (received) messages in the same terminal.
 
 ## Benchmark Project: MavLinkSharp.Benchmark
 

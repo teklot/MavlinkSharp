@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
 
 namespace MavLinkSharp
 {
@@ -55,13 +54,19 @@ namespace MavLinkSharp
                 // Messages
                 foreach (var message in dialect.Messages)
                 {
+                    message.PayloadLength = 0;
+                    message.MaxPayloadLength = 0;
                     foreach (var field in message.Fields)
                     {
                         field.SetDataType();
                         field.SetOrdinal();
                         field.SetLength();
 
-                        message.PayloadLength += field.Length;
+                        if (!field.Extended)
+                        {
+                            message.PayloadLength += field.Length;
+                        }
+                        message.MaxPayloadLength += field.Length;
                     }
 
                     message.SetOrderedFields();
