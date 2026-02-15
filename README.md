@@ -1,13 +1,14 @@
 ﻿# MavLinkSharp
 
-MavlinkSharp is a lightweight .NET library for parsing MAVLink v1/v2 raw messages using standard or custom dialects. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.
+MavlinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink.io/) v1/v2 raw messages using standard or custom dialects. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.
 
 ## Features
  - **Runtime Dialect Parsing:** Consumes standard MAVLink XML dialect files at runtime. No code generation required.
  - **Extensible:** Supports custom dialects with no extra effort. Just provide the XML file.
  - **High Performance:** Designed for speed and low allocation to handle high-throughput MAVLink streams.
+ - **Streaming Ready:** Built-in support for `System.IO.Pipelines` (`PipeReader`) to handle fragmented data streams efficiently.
  - **Cross-Platform:** Can be used on any platform that supports .NET Standard 2.0 (Windows, Linux, macOS, etc.).
- - **Minimal Dependencies:** Only requires `System.Memory` for modern memory-efficient parsing.
+ - **Minimal Dependencies:** Only requires `System.Memory` and `System.IO.Pipelines`.
 
 ## Supported Frameworks
 
@@ -31,13 +32,13 @@ Using the library involves four main steps:
 	Install-Package MavLinkSharp
 	```
 2.  **Initialize the Library:** At application startup, call the static `MavLink.Initialize()` method. You must specify which dialect file to use (e.g., `common.xml`).
-    > **Important:** This step is mandatory. Calling `Message.TryParse()` before `MavLink.Initialize()` will result in an `InvalidOperationException`.
-3.  **Parse Incoming Data:** As you receive data from a MAVLink stream (e.g., a UDP client or serial port), pass the raw `byte[]` packet to the `Message.TryParse()` static method.
-4.  **Use the Result:** If `TryParse()` returns `true`, the `out` parameter will be a populated `Frame` object containing the decoded message and its fields.
+    > **Important:** This step is mandatory. Calling `frame.TryParse()` before `MavLink.Initialize()` will result in an `InvalidOperationException`.
+3.  **Parse Incoming Data:** Create a `Frame` object once and reuse it. As you receive data from a MAVLink stream (e.g., a UDP client or serial port), pass the raw `byte[]` packet to the `frame.TryParse()` method.
+4.  **Use the Result:** If `TryParse()` returns `true`, the `frame` object will be populated with the decoded message and its fields.
 
 ## Dialect Handling
 
-The `MavLinkSharp` library utilizes a **runtime parsing mechanism** for MAVLink XML dialect files. This means message definitions are loaded and processed dynamically when your application starts, rather than requiring code generation.
+The `MavLinkSharp` library utilizes a **runtime parsing mechanism** for [MAVLink XML dialect files](https://mavlink.io/en/guide/xml_schema.html). This means message definitions are loaded and processed dynamically when your application starts, rather than requiring code generation.
 
 ### Using Standard Dialects
 
@@ -97,7 +98,7 @@ After initialization, you can further fine-tune which messages are parsed using 
 
 *   **`MavLink.ExcludeMessages(params uint[] messageIds)`**:
     *   **Purpose**: To disable parsing for specific MAVLink message ID(s).
-    *   **Behavior**: The specified messages will be marked as excluded and will be ignored by `Message.TryParse()`. Note that the **HEARTBEAT (#0)** message cannot be excluded.
+    *   **Behavior**: The specified messages will be marked as excluded and will be ignored by `frame.TryParse()`. Note that the **HEARTBEAT (#0)** message cannot be excluded.
     ```cs
     // Disable parsing for VFR_HUD (#74)
     MavLink.ExcludeMessages(74);
@@ -122,7 +123,7 @@ After initialization, you can further fine-tune which messages are parsed using 
     MavLink.ExcludeMessages(74, 100); // Exclude VFR_HUD and another message
     ```
 
-After initialization and any fine-tuning, process incoming byte streams with `Message.TryParse()`. Only the enabled messages (including HEARTBEAT) will yield a valid `Frame` object.
+After initialization and any fine-tuning, process incoming byte streams with `frame.TryParse()`. Only the enabled messages (including HEARTBEAT) will yield a valid `Frame` object.
 
 ## Code Example
 ```cs
@@ -133,33 +134,102 @@ using System.Net;
 using System.Net.Sockets;
 
 // 1. Initialize the library with the desired dialect.
-// This loads the message definitions from 'common.xml'.
 MavLink.Initialize(DialectType.Common);
 
 // 2. Specify which messages you want to parse.
-// Let's listen for SYS_STATUS (#1) and ATTITUDE (#30).
-// The HEARTBEAT (#0) message is always included by default.
 MavLink.IncludeMessages(1, 30);
+
+// 3. Create a Frame object once and reuse it for high performance (zero allocation).
+var frame = new Frame();
 
 // Example: Listen for MAVLink packets on a local UDP port.
 var endpoint = new IPEndPoint(IPAddress.Loopback, 14550);
 
 using var udpClient = new UdpClient(endpoint);
 
-Console.WriteLine($"Listening for MAVLink packets on {endpoint}...\n"});
+Console.WriteLine($"Listening for MAVLink packets on {endpoint}...\n");
 
 while (true)
 {
     // Receive a raw byte packet.
     var packet = udpClient.Receive(ref endpoint);
 
-    // 3. Try to parse the packet.
-    if (Message.TryParse(packet, out var frame))
+    // 4. Try to parse the packet into the existing frame object.
+    if (frame.TryParse(packet))
     {
-        // 4. If successful, use the data.
+        // 5. If successful, use the data.
         var fields = string.Join(", ", frame.Fields.Select(f => $"{f.Key}: {f.Value}"));
         
         Console.WriteLine($"Received: {Metadata.Messages[frame.MessageId].Name} => {fields}");
+    }
+}
+```
+
+## Constructing and Sending Messages
+`MavLinkSharp` makes it easy to construct MAVLink packets for transmission.
+
+```cs
+// 1. Get the message definition you want to send.
+var heartbeatDef = Metadata.Messages[0]; // HEARTBEAT
+
+// 2. Create a Frame and set the header information.
+var frame = new Frame
+{
+    StartMarker = Protocol.V2.StartMarker,
+    SystemId = 1,
+    ComponentId = 1,
+    MessageId = heartbeatDef.Id,
+    Message = heartbeatDef,
+    PacketSequence = 1
+};
+
+// 3. Set the field values.
+var values = new Dictionary<string, object>
+{
+    { "custom_mode", (uint)0 },
+    { "type", (byte)6 },         // MAV_TYPE_GCS
+    { "autopilot", (byte)8 },    // MAV_AUTOPILOT_INVALID
+    { "base_mode", (byte)0 },
+    { "system_status", (byte)4 }, // MAV_STATE_ACTIVE
+    { "mavlink_version", (byte)3 }
+};
+frame.SetFields(values);
+
+// 4. Serialize to a byte array.
+byte[] packet = frame.ToBytes();
+
+// 5. Send over your transport (e.g., UDP).
+udpClient.Send(packet, packet.Length, remoteEndPoint);
+```
+
+## Advanced: Asynchronous Streaming
+For high-bandwidth or fragmented streams (like Serial or TCP), `MavLinkSharp` supports `System.IO.Pipelines`. This allows for highly efficient, asynchronous parsing without manual buffer management.
+
+```cs
+using System.IO.Pipelines;
+
+public async Task ProcessMavLinkStreamAsync(PipeReader reader)
+{
+    var frame = new Frame();
+    while (true)
+    {
+        ReadResult result = await reader.ReadAsync();
+        ReadOnlySequence<byte> buffer = result.Buffer;
+
+        // Try to parse as many frames as possible from the current buffer
+        while (frame.TryParse(buffer, out SequencePosition consumed, out SequencePosition examined))
+        {
+            // Successfully parsed a frame!
+            Console.WriteLine($"Parsed Message ID: {frame.MessageId}");
+            
+            // Advance the local buffer slice
+            buffer = buffer.Slice(consumed);
+        }
+
+        // Tell the PipeReader how much we've consumed and examined
+        reader.AdvanceTo(buffer.Start, buffer.End);
+
+        if (result.IsCompleted) break;
     }
 }
 ```
@@ -170,7 +240,7 @@ The `MavLinkConsole` project serves as a practical example demonstrating how to 
 
 *   **`MavLinkConsole` (Transmitter & Receiver):** This console application runs two concurrent tasks:
     *   **Transmitter (Tx):** Generates and sends synthetic MAVLink messages (e.g., HEARTBEAT, GPS_RAW_INT, ATTITUDE) over UDP to the default MAVLink port (UDP 14550). It showcases how to construct MAVLink `Frame` objects and serialize them into byte arrays for transmission.
-    *   **Receiver (Rx):** Listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `Message.TryParse()` and access the decoded message fields. Tx and Rx are displayed in separate halves of the screen. See the source code for details.
+    *   **Receiver (Rx):** Listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `frame.TryParse()` and access the decoded message fields. Tx and Rx are displayed in separate halves of the screen. See the source code for details.
 
 This example provides a quick way to:
 *   **Test your MAVLinkSharp integration:** Verify that your application can correctly send and receive messages.
@@ -189,7 +259,7 @@ The `MavLinkSharp.Benchmark` project is a dedicated suite for measuring the perf
 
 Benchmarks currently included:
 *   **CRC Calculation:** Measures the speed of `Crc.Calculate()` for MAVLink packet checksums.
-*   **Message Parsing:** Evaluates the performance of `Message.TryParse()` for decoding incoming MAVLink packets.
+*   **Message Parsing:** Evaluates the performance of `frame.TryParse()` for decoding incoming MAVLink packets.
 
 *   **MavLink Initialization:** Measures the initial loading and parsing time of MAVLink XML dialect files via `MavLink.Initialize()`.
 

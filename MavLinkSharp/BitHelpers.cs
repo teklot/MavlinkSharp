@@ -29,5 +29,17 @@ namespace MavLinkSharp
             var union = new Int64DoubleUnion { Int64 = value };
             return union.Double;
         }
+
+        public static int SingleToInt32Bits(float value)
+        {
+            var union = new Int32SingleUnion { Single = value };
+            return union.Int32;
+        }
+
+        public static long DoubleToInt64Bits(double value)
+        {
+            var union = new Int64DoubleUnion { Double = value };
+            return union.Int64;
+        }
     }
 }

@@ -29,51 +29,23 @@ static class Transmitter
                 byte systemId = (byte)random.Next(1, 255);
                 byte componentId = (byte)random.Next(1, 255);
 
-                byte[] payload = GeneratePayload(message, random);
+                var fieldValues = GenerateFieldValues(message, random);
 
-                // 1. Calculate lengths (Header is 10 bytes for MAVLink 2)
-                int headerLen = Protocol.V2.HeaderLength;
-                int payloadLen = payload.Length;
-                int totalPacketSize = headerLen + payloadLen + 2; // +2 for final CRC
+                var frame = new Frame
+                {
+                    StartMarker = Protocol.V2.StartMarker,
+                    SystemId = systemId,
+                    ComponentId = componentId,
+                    MessageId = randomMessageId,
+                    Message = message,
+                    PacketSequence = packetSequence
+                };
 
-                // 2. Single allocation for the entire packet
-                byte[] packet = new byte[totalPacketSize];
-                Span<byte> packetBytes = packet.AsSpan();
+                frame.SetFields(fieldValues);
 
-                // 3. Construct Header directly into the buffer
-                packetBytes[0] = Protocol.V2.StartMarker;                   // 0: Start Marker (0xFD)
-                packetBytes[1] = (byte)payloadLen;                          // 1: Payload Length
-                packetBytes[2] = 0;                                         // 2: Incompatibility Flags (0 for now)
-                packetBytes[3] = 0;                                         // 3: Compatibility Flags (0 for now)
-                packetBytes[4] = packetSequence;                            // 4: Packet Sequence
-                packetBytes[5] = systemId;                                  // 5: System ID
-                packetBytes[6] = componentId;                               // 6: Component ID
-                packetBytes[7] = (byte)(randomMessageId & 0xFF);            // 7: Message ID (LSB)
-                packetBytes[8] = (byte)((randomMessageId >> 8) & 0xFF);     // 8: Message ID
-                packetBytes[9] = (byte)((randomMessageId >> 16) & 0xFF);    // 9: Message ID (MSB)
+                byte[] packet = frame.ToBytes();
 
-                // 4. Copy Payload using Slice and CopyTo
-                payload.AsSpan().CopyTo(packetBytes[headerLen..]);
-
-                // 5. Construct Checksum Buffer (Header minus StartMarker + Payload + CrcExtra)
-                // Total size for checksum = (10 - 1) + payloadLen + 1 = 10 + payloadLen
-                var checksumBuffer = new byte[headerLen + payloadLen];
-                Span<byte> checkSpan = checksumBuffer.AsSpan();
-
-                // Copy Header (excluding StartMarker) and Payload in one efficient operation
-                packetBytes[1..(headerLen + payloadLen)].CopyTo(checkSpan);
-
-                // Append CRC_EXTRA to the last byte of the checksum buffer
-                checkSpan[^1] = message.CrcExtra;
-
-                // 6. Calculate CRC
-                ushort checksum = Crc.Calculate(checksumBuffer);
-
-                // 7. Write CRC to the end of the packet (LSB first)
-                packetBytes[^2] = (byte)(checksum & 0xFF);                  // Checksum LSB
-                packetBytes[^1] = (byte)((checksum >> 8) & 0xFF);           // Checksum MSB
-
-                udpClient.Send(packetBytes.ToArray(), packetBytes.Length, remoteEndPoint);
+                udpClient.Send(packet, packet.Length, remoteEndPoint);
 
                 TerminalLayout.WriteTx($"Tx => " +
                     $"Seq: {packetSequence:D3}, " +
@@ -93,50 +65,14 @@ static class Transmitter
         }
     }
 
-    static byte[] GeneratePayload(Message messageDefinition, Random random)
+    static Dictionary<string, object> GenerateFieldValues(Message messageDefinition, Random random)
     {
-        using var ms = new MemoryStream();
-        using var bw = new BinaryWriter(ms);
+        var values = new Dictionary<string, object>();
         foreach (var field in messageDefinition.OrderedFields)
         {
-            object randomValue = GenerateRandomValue(field, random);
-            ConvertValueToBytes(bw, randomValue, field.DataType, field.ElementType, field.ArrayLength);
+            values[field.Name] = GenerateRandomValue(field, random);
         }
-        return ms.ToArray();
-    }
-
-    static void ConvertValueToBytes(BinaryWriter bw, object value, Type dataType, Type elementType, int arrayLength)
-    {
-        if (dataType.IsArray)
-        {
-            if (elementType == typeof(char))
-            {
-                char[] charArray = (char[])value;
-                bw.Write(Encoding.ASCII.GetBytes(charArray)); // Assuming ASCII for char arrays/strings
-            }
-            else
-            {
-                Array array = (Array)value;
-                foreach (var element in array)
-                {
-                    ConvertValueToBytes(bw, element, elementType, elementType, 0); // Recursive call for array elements
-                }
-            }
-        }
-        else
-        {
-            if (dataType == typeof(byte)) bw.Write((byte)value);
-            else if (dataType == typeof(sbyte)) bw.Write((sbyte)value);
-            else if (dataType == typeof(ushort)) bw.Write((ushort)value);
-            else if (dataType == typeof(short)) bw.Write((short)value);
-            else if (dataType == typeof(uint)) bw.Write((uint)value);
-            else if (dataType == typeof(int)) bw.Write((int)value);
-            else if (dataType == typeof(ulong)) bw.Write((ulong)value);
-            else if (dataType == typeof(long)) bw.Write((long)value);
-            else if (dataType == typeof(float)) bw.Write((float)value);
-            else if (dataType == typeof(double)) bw.Write((double)value);
-            else if (dataType == typeof(char)) bw.Write((char)value);
-        }
+        return values;
     }
 
     static object GenerateRandomValue(Field field, Random random)

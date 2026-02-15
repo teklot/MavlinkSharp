@@ -100,6 +100,12 @@ namespace MavLinkSharp
         public int Length { get; private set; }
 
         /// <summary>
+        /// Field position in the payload bytes.
+        /// </summary>
+        [XmlIgnore]
+        public int Offset { get; internal set; }
+
+        /// <summary>
         /// Element count if referred by an array.
         /// </summary>
         [XmlIgnore]
@@ -224,17 +230,116 @@ namespace MavLinkSharp
         {
             if (DataType.IsArray)
             {
+                var arraySpan = span.Slice(0, Length);
+                span = span.Slice(Length);
+
+                if (ElementType == typeof(char))
+                {
+                    // MAVLink chars are 1-byte, C# chars are 2-bytes.
+                    var chars = new char[ArrayLength];
+                    for (int i = 0; i < ArrayLength; i++) chars[i] = (char)arraySpan[i];
+                    return chars;
+                }
+
+                if (ElementType == typeof(byte)) return arraySpan.ToArray();
+                if (ElementType == typeof(sbyte)) return MemoryMarshal.Cast<byte, sbyte>(arraySpan).ToArray();
+                if (ElementType == typeof(short)) return MemoryMarshal.Cast<byte, short>(arraySpan).ToArray();
+                if (ElementType == typeof(ushort)) return MemoryMarshal.Cast<byte, ushort>(arraySpan).ToArray();
+                if (ElementType == typeof(int)) return MemoryMarshal.Cast<byte, int>(arraySpan).ToArray();
+                if (ElementType == typeof(uint)) return MemoryMarshal.Cast<byte, uint>(arraySpan).ToArray();
+                if (ElementType == typeof(long)) return MemoryMarshal.Cast<byte, long>(arraySpan).ToArray();
+                if (ElementType == typeof(ulong)) return MemoryMarshal.Cast<byte, ulong>(arraySpan).ToArray();
+                if (ElementType == typeof(float)) return MemoryMarshal.Cast<byte, float>(arraySpan).ToArray();
+                if (ElementType == typeof(double)) return MemoryMarshal.Cast<byte, double>(arraySpan).ToArray();
+
                 var values = Array.CreateInstance(ElementType, ArrayLength);
                 
                 for (var i = 0; i < ArrayLength; i++)
                 {
-                    values.SetValue(ReadValue(ElementType, ref span), i);
+                    values.SetValue(ReadValue(ElementType, ref arraySpan), i);
                 }
 
                 return values;
             }
 
             return ReadValue(ElementType, ref span);
+        }
+
+        internal void SetValue(Span<byte> span, object value)
+        {
+            if (DataType.IsArray)
+            {
+                var array = (Array)value;
+                var arraySpan = span.Slice(0, Length);
+
+                if (ElementType == typeof(char))
+                {
+                    var chars = (char[])value;
+                    for (int i = 0; i < ArrayLength; i++)
+                    {
+                        arraySpan[i] = i < chars.Length ? (byte)chars[i] : (byte)0;
+                    }
+                    return;
+                }
+
+                if (ElementType == typeof(byte))
+                {
+                    ((byte[])value).AsSpan().CopyTo(arraySpan);
+                    return;
+                }
+
+                // For other numeric types, we can use MemoryMarshal for speed if it's an array of the exact type
+                if (value.GetType() == DataType)
+                {
+                    if (ElementType == typeof(sbyte)) { MemoryMarshal.Cast<sbyte, byte>(((sbyte[])value).AsSpan()).CopyTo(arraySpan); return; }
+                    if (ElementType == typeof(short)) { MemoryMarshal.Cast<short, byte>(((short[])value).AsSpan()).CopyTo(arraySpan); return; }
+                    if (ElementType == typeof(ushort)) { MemoryMarshal.Cast<ushort, byte>(((ushort[])value).AsSpan()).CopyTo(arraySpan); return; }
+                    if (ElementType == typeof(int)) { MemoryMarshal.Cast<int, byte>(((int[])value).AsSpan()).CopyTo(arraySpan); return; }
+                    if (ElementType == typeof(uint)) { MemoryMarshal.Cast<uint, byte>(((uint[])value).AsSpan()).CopyTo(arraySpan); return; }
+                    if (ElementType == typeof(long)) { MemoryMarshal.Cast<long, byte>(((long[])value).AsSpan()).CopyTo(arraySpan); return; }
+                    if (ElementType == typeof(ulong)) { MemoryMarshal.Cast<ulong, byte>(((ulong[])value).AsSpan()).CopyTo(arraySpan); return; }
+                    if (ElementType == typeof(float)) { MemoryMarshal.Cast<float, byte>(((float[])value).AsSpan()).CopyTo(arraySpan); return; }
+                    if (ElementType == typeof(double)) { MemoryMarshal.Cast<double, byte>(((double[])value).AsSpan()).CopyTo(arraySpan); return; }
+                }
+
+                // Fallback for non-matching array types or more complex scenarios
+                for (var i = 0; i < ArrayLength; i++)
+                {
+                    var elementValue = i < array.Length ? array.GetValue(i) : 0;
+                    var elementSpan = arraySpan.Slice(i * Marshal.SizeOf(ElementType));
+                    WriteValue(elementSpan, ElementType, elementValue);
+                }
+                return;
+            }
+
+            WriteValue(span, ElementType, value);
+        }
+
+        private static void WriteValue(Span<byte> span, Type type, object value)
+        {
+            if (type == typeof(char)) span[0] = (byte)(char)value;
+            else if (type == typeof(sbyte)) span[0] = (byte)(sbyte)value;
+            else if (type == typeof(byte)) span[0] = (byte)value;
+            else if (type == typeof(short)) BinaryPrimitives.WriteInt16LittleEndian(span, (short)value);
+            else if (type == typeof(ushort)) BinaryPrimitives.WriteUInt16LittleEndian(span, (ushort)value);
+            else if (type == typeof(int)) BinaryPrimitives.WriteInt32LittleEndian(span, (int)value);
+            else if (type == typeof(uint)) BinaryPrimitives.WriteUInt32LittleEndian(span, (uint)value);
+            else if (type == typeof(float))
+            {
+                var i = BitHelpers.SingleToInt32Bits((float)value);
+                BinaryPrimitives.WriteInt32LittleEndian(span, i);
+            }
+            else if (type == typeof(long)) BinaryPrimitives.WriteInt64LittleEndian(span, (long)value);
+            else if (type == typeof(ulong)) BinaryPrimitives.WriteUInt64LittleEndian(span, (ulong)value);
+            else if (type == typeof(double))
+            {
+                var l = BitHelpers.DoubleToInt64Bits((double)value);
+                BinaryPrimitives.WriteInt64LittleEndian(span, l);
+            }
+            else
+            {
+                throw new Exception($"Unknown type: {type}");
+            }
         }
 
         private static object ReadValue(Type type, ref ReadOnlySpan<byte> span)

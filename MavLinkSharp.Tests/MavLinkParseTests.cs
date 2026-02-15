@@ -31,7 +31,8 @@ namespace MavLinkSharp.Tests
             var packetBytes = CreatePacketRaw(systemId, componentId, sequence, messageId, payload);
 
             // Act
-            var result = Message.TryParse(packetBytes, out var frame);
+            var frame = new Frame();
+            var result = frame.TryParse(packetBytes);
 
             // Assert
             Assert.True(result);
@@ -43,7 +44,7 @@ namespace MavLinkSharp.Tests
             Assert.NotNull(frame.Fields);
             Assert.True(frame.Fields.Count > 0);
             Assert.Equal("HEARTBEAT", Metadata.Messages[frame.MessageId].Name);
-            Assert.Equal(payload.Length, frame.Payload.Length);
+            Assert.Equal(payload.Length, frame.PayloadLength);
         }
 
         [Fact]
@@ -69,7 +70,8 @@ namespace MavLinkSharp.Tests
             var packetBytes = CreateMavLink2Packet(systemId, componentId, sequence, messageId, values);
 
             // Act
-            var result = Message.TryParse(packetBytes, out var frame);
+            var frame = new Frame();
+            var result = frame.TryParse(packetBytes);
 
             // Assert
             Assert.True(result, "Should parse valid ATTITUDE packet");
@@ -110,7 +112,8 @@ namespace MavLinkSharp.Tests
             var packetBytes = CreateMavLink2Packet(systemId, componentId, sequence, messageId, values);
 
             // Act
-            var result = Message.TryParse(packetBytes, out var frame);
+            var frame = new Frame();
+            var result = frame.TryParse(packetBytes);
 
             // Assert
             Assert.True(result, "Should parse valid SYS_STATUS packet");
@@ -128,7 +131,8 @@ namespace MavLinkSharp.Tests
             var invalidPacket = new byte[] { 0xFD, 0x09, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00 };
 
             // Act
-            var result = Message.TryParse(invalidPacket, out var frame);
+            var frame = new Frame();
+            var result = frame.TryParse(invalidPacket);
 
             // Assert
             Assert.False(result);
@@ -143,7 +147,8 @@ namespace MavLinkSharp.Tests
             var emptyPacket = Array.Empty<byte>();
 
             // Act
-            var result = Message.TryParse(emptyPacket, out var frame);
+            var frame = new Frame();
+            var result = frame.TryParse(emptyPacket);
 
             // Assert
             Assert.False(result);
@@ -177,7 +182,8 @@ namespace MavLinkSharp.Tests
             var packetBytes = CreateMavLink2Packet(systemId, componentId, sequence, messageId, values);
 
             // Act
-            var result = Message.TryParse(packetBytes.AsSpan(), out var frame);
+            var frame = new Frame();
+            var result = frame.TryParse(packetBytes.AsSpan());
 
             // Assert
             Assert.True(result, "Should parse valid HOME_POSITION packet");
@@ -219,7 +225,8 @@ namespace MavLinkSharp.Tests
             var packetBytes = CreateMavLink2Packet(systemId, componentId, sequence, messageId, values);
 
             // Act
-            var result = Message.TryParse(packetBytes.AsSpan(), out var frame);
+            var frame = new Frame();
+            var result = frame.TryParse(packetBytes.AsSpan());
 
             // Assert
             Assert.True(result, "Should parse valid STATUSTEXT packet");
@@ -252,7 +259,8 @@ namespace MavLinkSharp.Tests
             var packetBytes = CreateMavLink2Packet(systemId, componentId, sequence, messageId, values);
 
             // Act
-            var result = Message.TryParse(packetBytes.AsSpan(), out var frame);
+            var frame = new Frame();
+            var result = frame.TryParse(packetBytes.AsSpan());
 
             // Assert
             Assert.True(result, "Should parse valid TIMESYNC packet");
@@ -284,7 +292,8 @@ namespace MavLinkSharp.Tests
             var packetBytes = CreateMavLink2Packet(systemId, componentId, sequence, messageId, values);
 
             // Act
-            var result = Message.TryParse(packetBytes.AsSpan(), out var frame);
+            var frame = new Frame();
+            var result = frame.TryParse(packetBytes.AsSpan());
 
             // Assert
             Assert.True(result, "Should parse valid WHEEL_DISTANCE packet");

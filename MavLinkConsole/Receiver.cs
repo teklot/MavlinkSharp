@@ -1,45 +1,102 @@
 using MavLinkSharp;
-using MavLinkSharp.Enums;
-using System.Net;
+using System.Buffers;
+using System.IO.Pipelines;
 using System.Net.Sockets;
+using System.Threading.Channels;
 
 namespace MavLinkConsole;
 
 static class Receiver
 {
-    public static void Run(UdpClient udpClient)
+    public static async Task RunAsync(UdpClient udpClient, CancellationToken cancellationToken = default)
     {
-        var remoteEndPoint = new IPEndPoint(IPAddress.Any, 0); // Listener does not specify target IP
+        // 1. Create a Pipe for the byte stream
+        var pipe = new Pipe();
+        
+        // 2. Create a Channel for parsed Frames (decouple IO from logic)
+        var channel = Channel.CreateBounded<Frame>(new BoundedChannelOptions(100)
+        {
+            SingleWriter = true,
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.Wait
+        });
 
-        while (true)
+        var fillTask = FillPipeAsync(udpClient, pipe.Writer, cancellationToken);
+        var parseTask = ParsePipeAsync(pipe.Reader, channel.Writer, cancellationToken);
+        var processTask = ProcessChannelAsync(channel.Reader, cancellationToken);
+
+        await Task.WhenAll(fillTask, parseTask, processTask);
+    }
+
+    private static async Task FillPipeAsync(UdpClient udpClient, PipeWriter writer, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
         {
             try
             {
-                // UdpClient.Receive is synchronous and blocking.
-                // In a real application, consider an async version or a separate thread.
-                byte[] receivedBytes = udpClient.Receive(ref remoteEndPoint);
-                
-                if (Message.TryParse(receivedBytes, out var frame))
-                {
-                    TerminalLayout.WriteRx($"Rx => " +
-                        $"Seq: {frame.PacketSequence:D3}, " +
-                        $"SysId: {frame.SystemId:X2}, " +
-                        $"CompId: {frame.ComponentId:X2}, " +
-                        $"Id: {frame.MessageId:X4}, " +
-                        $"Name: {Metadata.Messages[frame.MessageId].Name}");
-                }
-                else 
-                {
-                    if (frame.ErrorReason != ErrorReason.None)
-                    {
-                        TerminalLayout.WriteRx($"Rx: Error parsing packet: {frame.ErrorReason}");
-                    }
-                }
+                var result = await udpClient.ReceiveAsync();
+                await writer.WriteAsync(result.Buffer, ct);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                TerminalLayout.WriteRx($"Rx: Error receiving or parsing packet: {ex.Message}");
+                // In a real app, log to a file or telemetry
             }
         }
+        await writer.CompleteAsync();
+    }
+
+    private static async Task ParsePipeAsync(PipeReader reader, ChannelWriter<Frame> writer, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            ReadResult result;
+            try
+            {
+                result = await reader.ReadAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            ReadOnlySequence<byte> buffer = result.Buffer;
+
+            while (true)
+            {
+                var frame = new Frame();
+                if (frame.TryParse(buffer, out SequencePosition consumed, out SequencePosition examined))
+                {
+                    await writer.WriteAsync(frame, ct);
+                    buffer = buffer.Slice(consumed);
+                }
+                else
+                {
+                    reader.AdvanceTo(consumed, examined);
+                    break;
+                }
+            }
+
+            if (result.IsCompleted) break;
+        }
+        writer.Complete();
+    }
+
+    private static async Task ProcessChannelAsync(ChannelReader<Frame> reader, CancellationToken ct)
+    {
+        await foreach (var frame in reader.ReadAllAsync(ct))
+        {
+            TerminalLayout.WriteRx($"Rx => " +
+                $"Seq: {frame.PacketSequence:D3}, " +
+                $"SysId: {frame.SystemId:X2}, " +
+                $"CompId: {frame.ComponentId:X2}, " +
+                $"Id: {frame.MessageId:X4}, " +
+                $"Name: {Metadata.Messages[frame.MessageId].Name}");
+        }
+    }
+
+    // Keep the old Run method for compatibility if needed, but redirected to the async one
+    public static void Run(UdpClient udpClient)
+    {
+        RunAsync(udpClient).GetAwaiter().GetResult();
     }
 }

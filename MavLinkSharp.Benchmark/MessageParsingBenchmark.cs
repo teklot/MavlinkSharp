@@ -7,6 +7,7 @@ namespace MavLinkSharp.Benchmark
     {
         private byte[] _heartbeatPacket = null!;
         private uint _messageId = 0; // HEARTBEAT
+        private readonly Frame _frame = new Frame();
 
         [GlobalSetup]
         public void Setup()
@@ -50,7 +51,7 @@ namespace MavLinkSharp.Benchmark
         [Benchmark]
         public bool TryParse()
         {
-            return Message.TryParse(_heartbeatPacket, out var frame);
+            return _frame.TryParse(_heartbeatPacket);
         }
     }
 }

@@ -25,7 +25,7 @@ class Program
 
             // Run Tx and Rx tasks concurrently
             var txTask = Task.Run(() => Transmitter.Run(udpClient, remoteEndPoint));
-            var rxTask = Task.Run(() => Receiver.Run(udpClient));
+            var rxTask = Receiver.RunAsync(udpClient);
 
             // Keep the application alive until both tasks complete (which will be never in this case)
             // or a cancellation token is used. For this example, we just await them.

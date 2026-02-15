@@ -70,6 +70,14 @@ namespace MavLinkSharp
                     }
 
                     message.SetOrderedFields();
+
+                    int currentOffset = 0;
+                    foreach (var field in message.OrderedFields)
+                    {
+                        field.Offset = currentOffset;
+                        currentOffset += field.Length;
+                    }
+
                     message.SetCrcExtra();
 
                     Messages[message.Id] = message;
