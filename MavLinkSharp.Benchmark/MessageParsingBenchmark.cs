@@ -1,4 +1,6 @@
 using BenchmarkDotNet.Attributes;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace MavLinkSharp.Benchmark
 {
@@ -16,42 +18,49 @@ namespace MavLinkSharp.Benchmark
 
             // Manually construct a valid HEARTBEAT packet
             var messageInfo = Metadata.Messages[_messageId];
-            var payload = new byte[messageInfo.PayloadLength];
-            payload[4] = 8; // type = MAV_TYPE_GCS
-            payload[8] = 3; // mavlink_version
-
-            var packetBytes = new System.Collections.Generic.List<byte>();
-
-            // Header for MAVLink 2
-            packetBytes.Add(Protocol.V2.StartMarker);
-            packetBytes.Add((byte)payload.Length);
-            packetBytes.Add(0); // Incompatibility Flags
-            packetBytes.Add(0); // Compatibility Flags
-            packetBytes.Add(0); // Sequence
-            packetBytes.Add(1); // SystemId
-            packetBytes.Add(1); // ComponentId
-            packetBytes.Add((byte)(_messageId & 0xFF));
-            packetBytes.Add((byte)((_messageId >> 8) & 0xFF));
-            packetBytes.Add((byte)((_messageId >> 16) & 0xFF));
             
-            // Payload
-            packetBytes.AddRange(payload);
+            var frame = new Frame
+            {
+                StartMarker = Protocol.V2.StartMarker,
+                SystemId = 1,
+                ComponentId = 1,
+                MessageId = _messageId,
+                Message = messageInfo,
+                PacketSequence = 1
+            };
 
-            // Checksum
-            var signatureBytes = new List<byte>();
-            signatureBytes.AddRange(packetBytes.Skip(1));
-            signatureBytes.Add(messageInfo.CrcExtra);
-            ushort checksum = Crc.Calculate(signatureBytes.ToArray());
-            packetBytes.Add((byte)(checksum & 0xFF));
-            packetBytes.Add((byte)((checksum >> 8) & 0xFF));
-            
-            _heartbeatPacket = packetBytes.ToArray();
+            var values = new Dictionary<string, object>
+            {
+                { "custom_mode", (uint)0 },
+                { "type", (byte)6 },         
+                { "autopilot", (byte)8 },    
+                { "base_mode", (byte)0 },
+                { "system_status", (byte)4 }, 
+                { "mavlink_version", (byte)3 }
+            };
+            frame.SetFields(values);
+
+            _heartbeatPacket = frame.ToBytes();
         }
 
         [Benchmark]
         public bool TryParse()
         {
             return _frame.TryParse(_heartbeatPacket);
+        }
+
+        [Benchmark]
+        public byte AccessFieldDictionary()
+        {
+            _frame.TryParse(_heartbeatPacket);
+            return (byte)_frame.Fields["mavlink_version"];
+        }
+
+        [Benchmark]
+        public byte AccessFieldTyped()
+        {
+            _frame.TryParse(_heartbeatPacket);
+            return _frame.GetByte("mavlink_version");
         }
     }
 }

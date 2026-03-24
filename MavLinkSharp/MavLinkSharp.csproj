@@ -7,7 +7,7 @@
 		<Nullable>disable</Nullable>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<Title>MAVLinkSharp</Title>
-		<Version>1.4.0</Version>
+		<Version>1.5.0</Version>
 		<Authors>TekLot,$(AssemblyName)</Authors>
 		<Description>MavlinkSharp is a lightweight .NET library for parsing MAVLink v1/v2 raw messages using standard or custom dialects. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.</Description>
 		<Copyright>Copyright © 2026 TekLot</Copyright>
@@ -27,12 +27,11 @@
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<PackageReleaseNotes>
-			- Optimized message parsing "hot path" for high-performance, zero-allocation scenarios.
-			- Implemented lazy field decoding to reduce CPU and boxing overhead.
-			- Refactored TryParse to be an instance method on the Frame class to encourage object reuse.
-			- Added MemoryMarshal optimizations for bulk array decoding.
-			- Added Frame.SetFields and Frame.ToBytes for simplified and safer packet construction and serialization.
-			- Added built-in support for System.IO.Pipelines (PipeReader) and ReadOnlySequence for asynchronous, zero-allocation streaming.
+			- Introduced MavLinkContext to support multiple MAVLink dialects simultaneously in the same application.
+			- Added high-performance typed accessors to the Frame class (e.g., GetByte, GetUInt32, GetArray&lt;T&gt;) to eliminate boxing and dictionary overhead.
+			- Optimized field lookups with a new FieldsByName dictionary in the Message class for O(1) access.
+			- Added Frame.TryWriteBytes for efficient, zero-allocation packet serialization to an existing buffer.
+			- Refactored internal metadata management to be instance-based while maintaining backward compatibility via the Default context.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

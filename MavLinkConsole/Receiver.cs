@@ -47,6 +47,7 @@ static class Receiver
 
     private static async Task ParsePipeAsync(PipeReader reader, ChannelWriter<Frame> writer, CancellationToken ct)
     {
+        var frame = new Frame();
         while (!ct.IsCancellationRequested)
         {
             ReadResult result;
@@ -63,10 +64,17 @@ static class Receiver
 
             while (true)
             {
-                var frame = new Frame();
                 if (frame.TryParse(buffer, out SequencePosition consumed, out SequencePosition examined))
                 {
-                    await writer.WriteAsync(frame, ct);
+                    // Given the current architecture, we'll create a copy for the channel.
+                    
+                    // TODO: In a high-perf app, use a pool of Frames.
+                    var resultFrame = new Frame();
+                    var frameSequence = buffer.Slice(0, buffer.GetPosition(0, consumed));
+                    // Since it's a small slice (a single frame), copying to an array is fine for this console example.
+                    resultFrame.TryParse(frameSequence.ToArray().AsSpan()); 
+                    
+                    await writer.WriteAsync(resultFrame, ct);
                     buffer = buffer.Slice(consumed);
                 }
                 else

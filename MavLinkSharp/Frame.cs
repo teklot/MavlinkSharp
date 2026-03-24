@@ -64,9 +64,30 @@ namespace MavLinkSharp
         public byte[] Signature { get; } = new byte[13];
 
         /// <summary>
+        /// The dialect context to use for parsing and message metadata.
+        /// Defaults to <see cref="MavLinkContext.Default"/>.
+        /// </summary>
+        public MavLinkContext Context { get; set; } = MavLinkContext.Default;
+
+        /// <summary>
         /// Indicates whether the frame includes a signature.
         /// </summary>
         public bool HasSignature { get; internal set; }
+
+        /// <summary>
+        /// Gets the total length of the packet in bytes.
+        /// </summary>
+        public int PacketLength
+        {
+            get
+            {
+                bool isV2 = StartMarker == Protocol.V2.StartMarker || StartMarker == 0;
+                int headerLen = isV2 ? Protocol.V2.HeaderLength : Protocol.V1.HeaderLength;
+                int len = headerLen + PayloadLength + Protocol.V1.ChecksumLength;
+                if (isV2 && HasSignature) len += Protocol.V2.SignatureLength;
+                return len;
+            }
+        }
         #endregion
 
         #region Extra Properties
@@ -95,10 +116,10 @@ namespace MavLinkSharp
                             : Message.PayloadLength;
 
                         ReadOnlySpan<byte> span = Payload.AsSpan(0, readLength);
-                        foreach (var field in Message.OrderedFields)
+                        foreach (var f in Message.OrderedFields)
                         {
-                            var fieldSpan = span.Slice(field.Offset, field.Length);
-                            _fields[field.Name] = field.GetValue(ref fieldSpan);
+                            var fieldSpan = span.Slice(f.Offset, f.Length);
+                            _fields[f.Name] = f.GetValue(ref fieldSpan);
                         }
                     }
                 }
@@ -110,6 +131,137 @@ namespace MavLinkSharp
         /// If an error occurred during parsing, this property specifies the reason.
         /// </summary>
         public ErrorReason ErrorReason { get; internal set; }
+        #endregion
+
+        #region Typed Accessors
+        private ReadOnlySpan<byte> GetFieldSpan(string name, out Field field)
+        {
+            if (Message == null) throw new InvalidOperationException("Message metadata is not available.");
+            if (!Message.FieldsByName.TryGetValue(name, out field))
+                throw new ArgumentException($"Field '{name}' not found in message '{Message.Name}'.");
+
+            return Payload.AsSpan(field.Offset, field.Length);
+        }
+
+        /// <summary>
+        /// Gets the value of a byte field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The byte value of the field.</returns>
+        public byte GetByte(string name) => GetFieldSpan(name, out _)[0];
+
+        /// <summary>
+        /// Gets the value of a signed byte field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The sbyte value of the field.</returns>
+        public sbyte GetSByte(string name) => (sbyte)GetFieldSpan(name, out _)[0];
+
+        /// <summary>
+        /// Gets the value of a 16-bit unsigned integer field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The ushort value of the field.</returns>
+        public ushort GetUInt16(string name) => BinaryPrimitives.ReadUInt16LittleEndian(GetFieldSpan(name, out _));
+
+        /// <summary>
+        /// Gets the value of a 16-bit signed integer field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The short value of the field.</returns>
+        public short GetInt16(string name) => BinaryPrimitives.ReadInt16LittleEndian(GetFieldSpan(name, out _));
+
+        /// <summary>
+        /// Gets the value of a 32-bit unsigned integer field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The uint value of the field.</returns>
+        public uint GetUInt32(string name) => BinaryPrimitives.ReadUInt32LittleEndian(GetFieldSpan(name, out _));
+
+        /// <summary>
+        /// Gets the value of a 32-bit signed integer field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The int value of the field.</returns>
+        public int GetInt32(string name) => BinaryPrimitives.ReadInt32LittleEndian(GetFieldSpan(name, out _));
+
+        /// <summary>
+        /// Gets the value of a 64-bit unsigned integer field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The ulong value of the field.</returns>
+        public ulong GetUInt64(string name) => BinaryPrimitives.ReadUInt64LittleEndian(GetFieldSpan(name, out _));
+
+        /// <summary>
+        /// Gets the value of a 64-bit signed integer field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The long value of the field.</returns>
+        public long GetInt64(string name) => BinaryPrimitives.ReadInt64LittleEndian(GetFieldSpan(name, out _));
+
+        /// <summary>
+        /// Gets the value of a single-precision floating point field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The float value of the field.</returns>
+        public float GetSingle(string name) => BitHelpers.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(GetFieldSpan(name, out _)));
+
+        /// <summary>
+        /// Gets the value of a double-precision floating point field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The double value of the field.</returns>
+        public double GetDouble(string name) => BitHelpers.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(GetFieldSpan(name, out _)));
+
+        /// <summary>
+        /// Gets the value of a character field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>The char value of the field.</returns>
+        public char GetChar(string name) => (char)GetFieldSpan(name, out _)[0];
+
+        /// <summary>
+        /// Gets the raw byte array of a field by name.
+        /// </summary>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>A byte array containing the field's data.</returns>
+        public byte[] GetByteArray(string name) => GetFieldSpan(name, out _).ToArray();
+
+        /// <summary>
+        /// Gets an array of typed values for a field by name.
+        /// </summary>
+        /// <typeparam name="T">The type of elements in the array. Supported types are numeric types and char.</typeparam>
+        /// <param name="name">The name of the field.</param>
+        /// <returns>An array of type T containing the field's data.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if the field is not an array.</exception>
+        /// <exception cref="NotSupportedException">Thrown if the type T is not supported.</exception>
+        public T[] GetArray<T>(string name) where T : struct
+        {
+            var span = GetFieldSpan(name, out var field);
+            if (field.ArrayLength == 0) throw new InvalidOperationException($"Field '{name}' is not an array.");
+            
+            // Fast path for supported types using MemoryMarshal.Cast
+            if (typeof(T) == typeof(byte)) return (T[])(object)span.ToArray();
+            if (typeof(T) == typeof(sbyte)) return (T[])(object)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, sbyte>(span).ToArray();
+            if (typeof(T) == typeof(ushort)) return (T[])(object)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ushort>(span).ToArray();
+            if (typeof(T) == typeof(short)) return (T[])(object)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, short>(span).ToArray();
+            if (typeof(T) == typeof(uint)) return (T[])(object)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(span).ToArray();
+            if (typeof(T) == typeof(int)) return (T[])(object)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, int>(span).ToArray();
+            if (typeof(T) == typeof(ulong)) return (T[])(object)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ulong>(span).ToArray();
+            if (typeof(T) == typeof(long)) return (T[])(object)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, long>(span).ToArray();
+            if (typeof(T) == typeof(float)) return (T[])(object)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(span).ToArray();
+            if (typeof(T) == typeof(double)) return (T[])(object)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, double>(span).ToArray();
+
+            // Fallback for char (since it's 2 bytes in C# but 1 byte in MAVLink)
+            if (typeof(T) == typeof(char))
+            {
+                var chars = new char[field.ArrayLength];
+                for (int i = 0; i < field.ArrayLength; i++) chars[i] = (char)span[i];
+                return (T[])(object)chars;
+            }
+
+            throw new NotSupportedException($"Array type {typeof(T).Name} is not supported.");
+        }
         #endregion
 
         /// <summary>
@@ -137,6 +289,7 @@ namespace MavLinkSharp
             Timestamp = DateTime.UtcNow;
             _fields = null;
             ErrorReason = ErrorReason.None;
+            // Note: Context is preserved
         }
 
         /// <summary>
@@ -159,51 +312,73 @@ namespace MavLinkSharp
         }
 
         /// <summary>
+        /// Attempts to write the current frame into a destination byte span.
+        /// </summary>
+        /// <param name="destination">The span to write the MAVLink packet into.</param>
+        /// <param name="bytesWritten">When this method returns, contains the number of bytes written to the destination.</param>
+        /// <returns><c>true</c> if the packet was successfully written; otherwise, <c>false</c> (e.g., if the destination is too small).</returns>
+        public bool TryWriteBytes(Span<byte> destination, out int bytesWritten)
+        {
+            bytesWritten = 0;
+            if (Message == null) throw new InvalidOperationException("Message metadata must be set before serialization.");
+
+            int totalLen = PacketLength;
+            if (destination.Length < totalLen) return false;
+
+            bool isV2 = StartMarker == Protocol.V2.StartMarker || StartMarker == 0;
+            byte startMarker = isV2 ? Protocol.V2.StartMarker : Protocol.V1.StartMarker;
+            int headerLen = isV2 ? Protocol.V2.HeaderLength : Protocol.V1.HeaderLength;
+
+            destination[0] = startMarker;
+            destination[1] = PayloadLength;
+
+            if (isV2)
+            {
+                destination[2] = IncompatibilityFlags ?? 0;
+                destination[3] = CompatibilityFlags ?? 0;
+                destination[4] = PacketSequence;
+                destination[5] = SystemId;
+                destination[6] = ComponentId;
+                destination[7] = (byte)(MessageId & 0xFF);
+                destination[8] = (byte)((MessageId >> 8) & 0xFF);
+                destination[9] = (byte)((MessageId >> 16) & 0xFF);
+            }
+            else
+            {
+                destination[2] = PacketSequence;
+                destination[3] = SystemId;
+                destination[4] = ComponentId;
+                destination[5] = (byte)MessageId;
+            }
+
+            Payload.AsSpan(0, PayloadLength).CopyTo(destination.Slice(headerLen));
+
+            // CRC calculation: starts from offset 1, includes header (except start marker) and payload
+            ushort checksum = Crc.Calculate(destination.Slice(1, headerLen - 1 + PayloadLength));
+            checksum = Crc.Accumulate(Message.CrcExtra, checksum);
+
+            BinaryPrimitives.WriteUInt16LittleEndian(destination.Slice(headerLen + PayloadLength), checksum);
+
+            if (isV2 && HasSignature)
+            {
+                Signature.AsSpan(0, Protocol.V2.SignatureLength).CopyTo(destination.Slice(headerLen + PayloadLength + Protocol.V2.ChecksumLength));
+            }
+
+            bytesWritten = totalLen;
+            return true;
+        }
+
+        /// <summary>
         /// Serializes the current frame into a MAVLink packet (byte array).
         /// </summary>
         /// <returns>A byte array containing the full MAVLink packet, including header, payload, and checksum.</returns>
         public byte[] ToBytes()
         {
-            if (Message == null) throw new InvalidOperationException("Message metadata must be set before serialization.");
-
-            bool isV2 = StartMarker == Protocol.V2.StartMarker || StartMarker == 0; // Default to V2 if not specified
-            byte startMarker = isV2 ? Protocol.V2.StartMarker : Protocol.V1.StartMarker;
-            int headerLen = isV2 ? Protocol.V2.HeaderLength : Protocol.V1.HeaderLength;
-            int totalLen = headerLen + PayloadLength + Protocol.V1.ChecksumLength; // Checksum length is same for both
-
-            byte[] packet = new byte[totalLen];
-            Span<byte> span = packet.AsSpan();
-
-            span[0] = startMarker;
-            span[1] = PayloadLength;
-
-            if (isV2)
+            byte[] packet = new byte[PacketLength];
+            if (!TryWriteBytes(packet, out _))
             {
-                span[2] = IncompatibilityFlags ?? 0;
-                span[3] = CompatibilityFlags ?? 0;
-                span[4] = PacketSequence;
-                span[5] = SystemId;
-                span[6] = ComponentId;
-                span[7] = (byte)(MessageId & 0xFF);
-                span[8] = (byte)((MessageId >> 8) & 0xFF);
-                span[9] = (byte)((MessageId >> 16) & 0xFF);
+                throw new InvalidOperationException("Failed to write packet to buffer.");
             }
-            else
-            {
-                span[2] = PacketSequence;
-                span[3] = SystemId;
-                span[4] = ComponentId;
-                span[5] = (byte)MessageId;
-            }
-
-            Payload.AsSpan(0, PayloadLength).CopyTo(span.Slice(headerLen, PayloadLength));
-
-            // CRC calculation: starts from offset 1, includes header (except start marker) and payload, then CrcExtra
-            ushort checksum = Crc.Calculate(span.Slice(1, headerLen - 1 + PayloadLength));
-            checksum = Crc.Accumulate(Message.CrcExtra, checksum);
-
-            BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(headerLen + PayloadLength), checksum);
-
             return packet;
         }
 
@@ -217,7 +392,7 @@ namespace MavLinkSharp
         /// <returns><c>true</c> if a valid MAVLink frame was successfully parsed; otherwise, <c>false</c>.</returns>
         public bool TryParse(ReadOnlySequence<byte> sequence, out SequencePosition consumed, out SequencePosition examined)
         {
-            MavLink.ThrowIfNotInitialized();
+            Context.ThrowIfNotInitialized();
 
             // Default values
             consumed = sequence.Start;
@@ -314,7 +489,7 @@ namespace MavLinkSharp
         /// </remarks>
         public bool TryParse(ReadOnlySpan<byte> packet)
         {
-            MavLink.ThrowIfNotInitialized();
+            Context.ThrowIfNotInitialized();
 
             this.Reset();
 
@@ -424,7 +599,7 @@ namespace MavLinkSharp
                 (uint)(packet[offset + Protocol.V2.OffsetMessageId + 1] << 8) +
                 (uint)(packet[offset + Protocol.V2.OffsetMessageId + 2] << 16);
 
-            if (!Metadata.Messages.TryGetValue(this.MessageId, out var message))
+            if (!Context.Metadata.MessagesDictionary.TryGetValue(this.MessageId, out var message))
             {
                 this.ErrorReason = ErrorReason.MessageNotFound;
 
@@ -544,7 +719,7 @@ namespace MavLinkSharp
 
             this.MessageId = packet[offset + Protocol.V1.OffsetMessageId];
 
-            if (!Metadata.Messages.TryGetValue(this.MessageId, out var message))
+            if (!Context.Metadata.MessagesDictionary.TryGetValue(this.MessageId, out var message))
             {
                 this.ErrorReason = ErrorReason.MessageNotFound;
 

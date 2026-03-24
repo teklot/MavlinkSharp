@@ -158,9 +158,17 @@ while (true)
     if (frame.TryParse(packet))
     {
         // 5. If successful, use the data.
+        // You can access fields using the dynamic Fields dictionary:
         var fields = string.Join(", ", frame.Fields.Select(f => $"{f.Key}: {f.Value}"));
-        
         Console.WriteLine($"Received: {Metadata.Messages[frame.MessageId].Name} => {fields}");
+
+        // Or use high-performance typed accessors (preferred for low-latency scenarios):
+        if (frame.MessageId == 30) // ATTITUDE
+        {
+            float roll = frame.GetSingle("roll");
+            float pitch = frame.GetSingle("pitch");
+            Console.WriteLine($"Attitude: Roll={roll}, Pitch={pitch}");
+        }
     }
 }
 ```
@@ -201,6 +209,27 @@ byte[] packet = frame.ToBytes();
 // 5. Send over your transport (e.g., UDP).
 udpClient.Send(packet, packet.Length, remoteEndPoint);
 ```
+
+## Advanced: Multiple Dialects (MavLinkContext)
+Starting with version 1.5.0, `MavLinkSharp` supports handling multiple MAVLink dialects simultaneously through the `MavLinkContext` class. This is useful for complex gateways or ground stations that communicate with different types of vehicles.
+
+```cs
+// 1. Create separate contexts for different dialects
+var commonContext = new MavLinkContext();
+commonContext.Initialize(DialectType.Common);
+
+var ardupilotContext = new MavLinkContext();
+ardupilotContext.Initialize(DialectType.Ardupilotmega);
+
+// 2. Assign the context to the Frame object
+var commonFrame = new Frame { Context = commonContext };
+var ardupilotFrame = new Frame { Context = ardupilotContext };
+
+// 3. Parse packets using their respective frames/contexts
+if (commonFrame.TryParse(packetFromCommonVehicle)) { /* ... */ }
+if (ardupilotFrame.TryParse(packetFromArduPilotVehicle)) { /* ... */ }
+```
+The static `MavLink.Initialize()` and `Metadata` properties still work and represent a `MavLinkContext.Default` instance for easy backward compatibility.
 
 ## Advanced: Asynchronous Streaming
 For high-bandwidth or fragmented streams (like Serial or TCP), `MavLinkSharp` supports `System.IO.Pipelines`. This allows for highly efficient, asynchronous parsing without manual buffer management.

@@ -1,34 +1,48 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 namespace MavLinkSharp
 {
     /// <summary>
-    /// Serves as a static repository for MAVLink enumeration, command, and message definitions.
-    /// These collections are populated during the library's initialization from dialect files.
+    /// Serves as a repository for MAVLink enumeration, command, and message definitions.
     /// </summary>
     public class Metadata
     {
         /// <summary>
-        /// Collection of enumerations defined in given dialects.
+        /// Gets the metadata from the global default context.
         /// </summary>
-        public static Dictionary<string, Enum> Enums { get; } = new Dictionary<string, Enum>();
+        public static Metadata Default => MavLinkContext.Default.Metadata;
 
         /// <summary>
-        /// Collection of entries defined in given dialects.
+        /// Collection of enumerations defined in given dialects in the default context.
         /// </summary>
-        public static Dictionary<long, Entry> Commands { get; } = new Dictionary<long, Entry>();
+        public static Dictionary<string, Enum> Enums => Default.EnumsDictionary;
 
         /// <summary>
-        /// Collection of messages defined in given dialects.
+        /// Collection of entries defined in given dialects in the default context.
         /// </summary>
-        public static Dictionary<uint, Message> Messages { get; } = new Dictionary<uint, Message>();
+        public static Dictionary<long, Entry> Commands => Default.CommandsDictionary;
 
         /// <summary>
-        /// Initializes the static metadata collections (<see cref="Enums"/>, <see cref="Commands"/>, <see cref="Messages"/>)
-        /// by processing the provided MAVLink dialects.
+        /// Collection of messages defined in given dialects in the default context.
         /// </summary>
-        /// <param name="dialects">A dictionary of MAVLink dialect names to their parsed <see cref="MavLink"/> objects.</param>
-        internal static void Initialize(Dictionary<string, MavLink> dialects)
+        public static Dictionary<uint, Message> Messages => Default.MessagesDictionary;
+
+        /// <summary>
+        /// Instance collection of enumerations.
+        /// </summary>
+        public Dictionary<string, Enum> EnumsDictionary { get; } = new Dictionary<string, Enum>();
+
+        /// <summary>
+        /// Instance collection of entries.
+        /// </summary>
+        public Dictionary<long, Entry> CommandsDictionary { get; } = new Dictionary<long, Entry>();
+
+        /// <summary>
+        /// Instance collection of messages.
+        /// </summary>
+        public Dictionary<uint, Message> MessagesDictionary { get; } = new Dictionary<uint, Message>();
+
+        internal void Initialize(Dictionary<string, MavLink> dialects)
         {
             foreach (var (name, dialect) in dialects)
             {
@@ -37,7 +51,7 @@ namespace MavLinkSharp
 
                 foreach (var @enum in enums)
                 {
-                    Enums[@enum.Name] = @enum;
+                    EnumsDictionary[@enum.Name] = @enum;
                 }
 
                 // Commands
@@ -47,7 +61,7 @@ namespace MavLinkSharp
                 {
                     foreach (var entry in cmd.Entries)
                     {
-                        Commands[entry.Value] = entry;
+                        CommandsDictionary[entry.Value] = entry;
                     }
                 }
 
@@ -80,7 +94,7 @@ namespace MavLinkSharp
 
                     message.SetCrcExtra();
 
-                    Messages[message.Id] = message;
+                    MessagesDictionary[message.Id] = message;
                 }
             }
         }

@@ -87,6 +87,12 @@ namespace MavLinkSharp
         public List<Field> OrderedFields { get; private set; }
 
         /// <summary>
+        /// A dictionary for fast lookup of fields by name.
+        /// </summary>
+        [XmlIgnore]
+        public Dictionary<string, Field> FieldsByName { get; private set; }
+
+        /// <summary>
         /// Whether the message to be parsed.
         /// </summary>
         [XmlIgnore]
@@ -140,6 +146,8 @@ namespace MavLinkSharp
             OrderedFields = new List<Field>(fields);
 
             OrderedFields.AddRange(extensions);
+
+            FieldsByName = OrderedFields.ToDictionary(x => x.Name);
         }
 
         internal void SetCrcExtra()

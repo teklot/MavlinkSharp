@@ -305,6 +305,49 @@ namespace MavLinkSharp.Tests
             Assert.Equal(16.5, resultDistances[15], 4);
         }
 
+        [Fact]
+        public void Parse_TypedAccessors_ReturnsCorrectValues()
+        {
+            // Arrange
+            byte systemId = 1;
+            byte componentId = 1;
+            byte sequence = 42;
+            uint messageId = 242; // HOME_POSITION
+
+            var q = new float[] { 1.0f, 0.2f, 0.3f, 0.4f };
+            var values = new Dictionary<string, object>
+            {
+                { "latitude", (int)473977420 },
+                { "longitude", (int)85455940 },
+                { "altitude", (int)488000 },
+                { "x", 10.5f },
+                { "y", 20.6f },
+                { "z", -30.7f },
+                { "q", q },
+                { "approach_x", 1.1f },
+                { "approach_y", 2.2f },
+                { "approach_z", 3.3f },
+                { "time_usec", (ulong)1234567890 }
+            };
+            var packetBytes = CreateMavLink2Packet(systemId, componentId, sequence, messageId, values);
+
+            // Act
+            var frame = new Frame();
+            frame.TryParse(packetBytes);
+
+            // Assert
+            Assert.Equal((ulong)1234567890, frame.GetUInt64("time_usec"));
+            Assert.Equal((int)473977420, frame.GetInt32("latitude"));
+            Assert.Equal(10.5f, frame.GetSingle("x"));
+            Assert.Equal(20.6f, frame.GetSingle("y"));
+            Assert.Equal(-30.7f, frame.GetSingle("z"));
+            
+            var resultQ = frame.GetArray<float>("q");
+            Assert.Equal(4, resultQ.Length);
+            Assert.Equal(1.0f, resultQ[0]);
+            Assert.Equal(0.2f, resultQ[1]);
+        }
+
         private byte[] CreateMavLink2Packet(byte systemId, byte componentId, byte sequence, uint messageId, Dictionary<string, object> fieldValues)
         {
             var messageInfo = Metadata.Messages[messageId];
