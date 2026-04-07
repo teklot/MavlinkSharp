@@ -12,9 +12,16 @@ MavlinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink
 
 ## Supported Frameworks
 
-`MavLinkSharp` targets **.NET Standard 2.0**, providing broad compatibility across nearly all modern and legacy .NET platforms, including .NET Framework.
+`MavLinkSharp` is a **multi-targeted** library supporting:
+- **.NET 10+**: Optimized for maximum performance and **Native AOT** compatibility.
+- **.NET Standard 2.0**: Providing broad compatibility across legacy .NET platforms, including .NET Framework.
 
-### Compatible Platforms:
+### Modern .NET Features (10+):
+*   **Native AOT Ready**: Uses a high-performance `XmlReader` parser instead of `XmlSerializer` to ensure zero reflection during initialization.
+*   **High Performance**: Leverages modern hardware intrinsics and `Span<T>` for bit-manipulation.
+*   **IsAotCompatible**: Fully compatible with trimmed and AOT-compiled applications.
+
+### Compatible Platforms (Standard 2.0):
 
 *   **.NET Core / .NET (5+):** All versions.
 *   **.NET Framework:** 4.6.1 and later (4.7.2+ recommended).
@@ -192,14 +199,15 @@ var frame = new Frame
 };
 
 // 3. Set the field values.
+// Field.SetValue automatically handles numeric type conversion (e.g., int to float).
 var values = new Dictionary<string, object>
 {
-    { "custom_mode", (uint)0 },
-    { "type", (byte)6 },         // MAV_TYPE_GCS
-    { "autopilot", (byte)8 },    // MAV_AUTOPILOT_INVALID
-    { "base_mode", (byte)0 },
-    { "system_status", (byte)4 }, // MAV_STATE_ACTIVE
-    { "mavlink_version", (byte)3 }
+    { "custom_mode", 0 },
+    { "type", 6 },         // MAV_TYPE_GCS
+    { "autopilot", 8 },    // MAV_AUTOPILOT_INVALID
+    { "base_mode", 0 },
+    { "system_status", 4 }, // MAV_STATE_ACTIVE
+    { "mavlink_version", 3 }
 };
 frame.SetFields(values);
 

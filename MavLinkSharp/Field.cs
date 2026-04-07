@@ -265,7 +265,13 @@ namespace MavLinkSharp
             return ReadValue(ElementType, ref span);
         }
 
-        internal void SetValue(Span<byte> span, object value)
+        /// <summary>
+        /// Sets the value of the field into the provided byte span.
+        /// Handles both scalar and array types, including automatic type conversion.
+        /// </summary>
+        /// <param name="span">The destination span where the field data will be written.</param>
+        /// <param name="value">The value to set (can be a numeric type or an array of numeric types/chars).</param>
+        public void SetValue(Span<byte> span, object value)
         {
             if (DataType.IsArray)
             {
@@ -315,25 +321,32 @@ namespace MavLinkSharp
             WriteValue(span, ElementType, value);
         }
 
-        private static void WriteValue(Span<byte> span, Type type, object value)
+        /// <summary>
+        /// Writes a single numeric or character value into the provided byte span.
+        /// Handles automatic type conversion from the source object.
+        /// </summary>
+        /// <param name="span">The destination span.</param>
+        /// <param name="type">The target MAVLink data type.</param>
+        /// <param name="value">The value to write.</param>
+        public static void WriteValue(Span<byte> span, Type type, object value)
         {
-            if (type == typeof(char)) span[0] = (byte)(char)value;
-            else if (type == typeof(sbyte)) span[0] = (byte)(sbyte)value;
-            else if (type == typeof(byte)) span[0] = (byte)value;
-            else if (type == typeof(short)) BinaryPrimitives.WriteInt16LittleEndian(span, (short)value);
-            else if (type == typeof(ushort)) BinaryPrimitives.WriteUInt16LittleEndian(span, (ushort)value);
-            else if (type == typeof(int)) BinaryPrimitives.WriteInt32LittleEndian(span, (int)value);
-            else if (type == typeof(uint)) BinaryPrimitives.WriteUInt32LittleEndian(span, (uint)value);
+            if (type == typeof(char)) span[0] = (byte)Convert.ToChar(value);
+            else if (type == typeof(sbyte)) span[0] = (byte)Convert.ToSByte(value);
+            else if (type == typeof(byte)) span[0] = Convert.ToByte(value);
+            else if (type == typeof(short)) BinaryPrimitives.WriteInt16LittleEndian(span, Convert.ToInt16(value));
+            else if (type == typeof(ushort)) BinaryPrimitives.WriteUInt16LittleEndian(span, Convert.ToUInt16(value));
+            else if (type == typeof(int)) BinaryPrimitives.WriteInt32LittleEndian(span, Convert.ToInt32(value));
+            else if (type == typeof(uint)) BinaryPrimitives.WriteUInt32LittleEndian(span, Convert.ToUInt32(value));
             else if (type == typeof(float))
             {
-                var i = BitHelpers.SingleToInt32Bits((float)value);
+                var i = BitHelpers.SingleToInt32Bits(Convert.ToSingle(value));
                 BinaryPrimitives.WriteInt32LittleEndian(span, i);
             }
-            else if (type == typeof(long)) BinaryPrimitives.WriteInt64LittleEndian(span, (long)value);
-            else if (type == typeof(ulong)) BinaryPrimitives.WriteUInt64LittleEndian(span, (ulong)value);
+            else if (type == typeof(long)) BinaryPrimitives.WriteInt64LittleEndian(span, Convert.ToInt64(value));
+            else if (type == typeof(ulong)) BinaryPrimitives.WriteUInt64LittleEndian(span, Convert.ToUInt64(value));
             else if (type == typeof(double))
             {
-                var l = BitHelpers.DoubleToInt64Bits((double)value);
+                var l = BitHelpers.DoubleToInt64Bits(Convert.ToDouble(value));
                 BinaryPrimitives.WriteInt64LittleEndian(span, l);
             }
             else

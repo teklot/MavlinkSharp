@@ -102,24 +102,167 @@ namespace MavLinkSharp
 
             if (!_dialects.ContainsKey(dialectFileName))
             {
+#if NET10_0_OR_GREATER
+                var dialect = LoadDialectAot(dialectPath);
+#else
                 using var reader = new StreamReader(dialectPath);
                 var xmlContent = reader.ReadToEnd();
                 using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xmlContent));
                 var serializer = new XmlSerializer(typeof(MavLink));
                 var dialect = (MavLink)serializer.Deserialize(stream);
+                TransformMessageExtensions(xmlContent, dialect);
+#endif
 
                 foreach (var include in dialect.Includes)
                 {
                     Deserialize(include);
                 }
 
-                TransformMessageExtensions(xmlContent, dialect);
                 _dialects[dialectFileName] = dialect;
             }
 
             return _dialects;
         }
 
+#if NET10_0_OR_GREATER
+        private MavLink LoadDialectAot(string path)
+        {
+            var dialect = new MavLink();
+            using var reader = XmlReader.Create(path);
+            
+            while (reader.Read())
+            {
+                if (reader.NodeType != XmlNodeType.Element) continue;
+
+                switch (reader.Name)
+                {
+                    case "include":
+                        dialect.Includes.Add(reader.ReadElementContentAsString());
+                        break;
+                    case "version":
+                        dialect.Version = reader.ReadElementContentAsString();
+                        break;
+                    case "dialect":
+                        dialect.Dialect = reader.ReadElementContentAsString();
+                        break;
+                    case "enum":
+                        dialect.Enums.Add(ReadEnum(reader));
+                        break;
+                    case "message":
+                        dialect.Messages.Add(ReadMessage(reader));
+                        break;
+                }
+            }
+            return dialect;
+        }
+
+        private Enum ReadEnum(XmlReader reader)
+        {
+            var @enum = new Enum { Name = reader.GetAttribute("name") };
+            var bitmask = reader.GetAttribute("bitmask");
+            if (bool.TryParse(bitmask, out var isBitmask)) @enum.Bitmask = isBitmask;
+
+            if (reader.IsEmptyElement) return @enum;
+
+            while (reader.Read())
+            {
+                if (reader.NodeType == XmlNodeType.EndElement && reader.Name == "enum") break;
+                if (reader.NodeType != XmlNodeType.Element) continue;
+
+                switch (reader.Name)
+                {
+                    case "description":
+                        @enum.Description = reader.ReadElementContentAsString();
+                        break;
+                    case "entry":
+                        @enum.Entries.Add(ReadEntry(reader));
+                        break;
+                }
+            }
+            return @enum;
+        }
+
+        private Entry ReadEntry(XmlReader reader)
+        {
+            var entry = new Entry { Name = reader.GetAttribute("name") };
+            var valStr = reader.GetAttribute("value");
+            if (long.TryParse(valStr, out var val)) entry.Value = val;
+
+            if (reader.IsEmptyElement) return entry;
+
+            while (reader.Read())
+            {
+                if (reader.NodeType == XmlNodeType.EndElement && reader.Name == "entry") break;
+                if (reader.NodeType != XmlNodeType.Element) continue;
+
+                if (reader.Name == "description")
+                    entry.Description = reader.ReadElementContentAsString();
+            }
+            return entry;
+        }
+
+        private Message ReadMessage(XmlReader reader)
+        {
+            var msg = new Message { Name = reader.GetAttribute("name") };
+            var idStr = reader.GetAttribute("id");
+            if (uint.TryParse(idStr, out var id)) msg.Id = id;
+
+            if (reader.IsEmptyElement) return msg;
+
+            bool inExtensions = false;
+            while (reader.Read())
+            {
+                if (reader.NodeType == XmlNodeType.EndElement && reader.Name == "message") break;
+                if (reader.NodeType != XmlNodeType.Element) continue;
+
+                switch (reader.Name)
+                {
+                    case "description":
+                        msg.Description = reader.ReadElementContentAsString();
+                        break;
+                    case "extensions":
+                        inExtensions = true;
+                        break;
+                    case "field":
+                        var field = ReadField(reader);
+                        field.Extended = inExtensions;
+                        msg.Fields.Add(field);
+                        break;
+                }
+            }
+            return msg;
+        }
+
+        private Field ReadField(XmlReader reader)
+        {
+            var field = new Field
+            {
+                Name = reader.GetAttribute("name"),
+                Type = reader.GetAttribute("type"),
+                Enum = reader.GetAttribute("enum"),
+                Units = reader.GetAttribute("units"),
+                Display = reader.GetAttribute("display"),
+                PrintFormat = reader.GetAttribute("print_format"),
+                Default = reader.GetAttribute("default"),
+                Invalid = reader.GetAttribute("invalid")
+            };
+            
+            var instance = reader.GetAttribute("instance");
+            if (bool.TryParse(instance, out var isInstance)) field.Instance = isInstance;
+
+            if (reader.IsEmptyElement) return field;
+            
+            // Just move to the end of the field tag without consuming next elements
+            while (reader.Read())
+            {
+                if (reader.NodeType == XmlNodeType.EndElement && reader.Name == "field") break;
+                if (reader.NodeType == XmlNodeType.Text) field.TagBody = reader.Value;
+            }
+            return field;
+        }
+#endif
+
+#if !NET10_0_OR_GREATER
         private void TransformMessageExtensions(string xmlContent, MavLink dialect)
         {
             var xmldoc = new XmlDocument();
@@ -146,6 +289,7 @@ namespace MavLinkSharp
                 }
             }
         }
+#endif
 
         /// <summary>
         /// Include specific message IDs for parsing in this context.

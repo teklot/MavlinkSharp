@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="MavLinkConsole/MavLinkConsole.csproj" />
+  <Project Path="MavLinkSharp/MavLinkSharp.csproj" />
+  <Project Path="MavLinkSharp.Benchmark/MavLinkSharp.Benchmark.csproj" />
+  <Project Path="MavLinkSharp.Tests/MavLinkSharp.Tests.csproj" />
+</Solution>

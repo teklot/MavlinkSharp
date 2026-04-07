@@ -400,6 +400,9 @@ namespace MavLinkSharp
 
             if (sequence.Length < Protocol.V1.PacketLengthMin) return false;
 
+            Span<byte> h = stackalloc byte[2];
+            Span<byte> buffer = stackalloc byte[Protocol.V2.PacketLengthMax];
+
             var readerPos = sequence.Start;
             while (sequence.Slice(readerPos).Length >= Protocol.V1.PacketLengthMin)
             {
@@ -437,7 +440,6 @@ namespace MavLinkSharp
                 }
 
                 // Read payload length (byte at offset 1)
-                Span<byte> h = stackalloc byte[2];
                 fromMarker.Slice(0, 2).CopyTo(h);
                 byte payloadLen = h[1];
 
@@ -452,7 +454,6 @@ namespace MavLinkSharp
                 }
 
                 // We have enough data for a frame, attempt parsing
-                Span<byte> buffer = stackalloc byte[Protocol.V2.PacketLengthMax];
                 int copyLen = (int)Math.Min(fromMarker.Length, (long)Protocol.V2.PacketLengthMax);
                 fromMarker.Slice(0, copyLen).CopyTo(buffer);
 
