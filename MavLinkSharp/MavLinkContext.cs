@@ -91,10 +91,24 @@ namespace MavLinkSharp
         {
             if (!File.Exists(dialectPath))
             {
-                dialectPath = Path.Combine("Dialects", dialectPath);
-                if (!File.Exists(dialectPath))
+                // Try relative to Dialects folder
+                var altPath = Path.Combine("Dialects", dialectPath);
+                if (File.Exists(altPath))
                 {
-                    throw new FileNotFoundException($"{dialectPath} not found.");
+                    dialectPath = altPath;
+                }
+                else
+                {
+                    // Try relative to AppContext.BaseDirectory/Dialects
+                    altPath = Path.Combine(AppContext.BaseDirectory, "Dialects", dialectPath);
+                    if (File.Exists(altPath))
+                    {
+                        dialectPath = altPath;
+                    }
+                    else
+                    {
+                        throw new FileNotFoundException($"{dialectPath} not found (searched locally and in {altPath}).");
+                    }
                 }
             }
 

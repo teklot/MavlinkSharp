@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
@@ -7,7 +7,7 @@
 		<Nullable>disable</Nullable>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<Title>MAVLinkSharp</Title>
-		<Version>1.6.0</Version>
+		<Version>1.6.1</Version>
 		<Authors>TekLot,$(AssemblyName)</Authors>
 		<Description>MavlinkSharp is a lightweight .NET library for parsing MAVLink v1/v2 raw messages using standard or custom dialects. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.</Description>
 		<Copyright>Copyright © 2026 TekLot</Copyright>
@@ -27,64 +27,16 @@
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<PackageReleaseNotes>
-			- Added Multi-targeting support for netstandard2.0 and net10.0.
-			- Introduced high-performance, AOT-safe XML parser for .NET 10 (replacing XmlSerializer).
-			- Improved Field.WriteValue with automatic numeric type conversion support.
-			- Optimized SignalEngine integration with message-grouped channel processing.
-			- Added IsAotCompatible flag for modern .NET environments.
+			- Resolved missing dialects in executable projects by copying transitive targets.
+			- Improved runtime path resolution relative to AppContext.BaseDirectory.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Content Include="Dialects\all.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\ardupilotmega.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\ASLUAV.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\AVSSUAS.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\common.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\cubepilot.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\development.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\icarous.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\matrixpilot.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\minimal.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\paparazzi.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\python_array_test.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\standard.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\storm32.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\test.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\ualberta.xml">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Dialects\uAvionix.xml">
+		<Content Include="Dialects\*.xml">
+			<Pack>true</Pack>
+			<PackagePath>contentFiles/any/any/Dialects/;build/Dialects/;buildTransitive/Dialects/</PackagePath>
+			<PackageCopyToOutput>true</PackageCopyToOutput>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 	</ItemGroup>
@@ -101,7 +53,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<Content Include="MavLinkSharp.targets" PackagePath="build/MavLinkSharp.targets" />
+		<Content Include="MavLinkSharp.targets" PackagePath="build/MavLinkSharp.targets;buildTransitive/MavLinkSharp.targets" />
 	</ItemGroup>
 
 </Project>

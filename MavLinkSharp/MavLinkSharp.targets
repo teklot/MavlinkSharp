@@ -1,8 +1,15 @@
 <Project>
-	<ItemGroup>
-		<Files Include="$(MSBuildThisFileDirectory)/../contentFiles/**/Dialects/*.*" />
-	</ItemGroup>
-	<Target Name="CopyFiles" AfterTargets="Build">
-		<Copy SourceFiles="@(Files)" DestinationFolder="$(TargetDir)/Dialects" />
-	</Target>
+  <ItemGroup>
+    <!-- 
+      Find the dialect files packed within the build/buildTransitive folder 
+      itself for maximum reliability in transitive dependency scenarios.
+      We use Content instead of None to better support modern SDK layouts.
+    -->
+    <Content Include="$(MSBuildThisFileDirectory)Dialects\*.xml">
+      <Link>Dialects\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+      <Pack>false</Pack>
+    </Content>
+  </ItemGroup>
 </Project>
