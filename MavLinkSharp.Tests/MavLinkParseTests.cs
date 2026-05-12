@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using MavLinkSharp;
+using MavLinkSharp.Enums;
 
 namespace MavLinkSharp.Tests
 {
@@ -353,7 +355,7 @@ namespace MavLinkSharp.Tests
             var messageInfo = Metadata.Messages[messageId];
             var payload = new byte[messageInfo.MaxPayloadLength];
             var span = payload.AsSpan();
-            
+
             // Fill payload based on OrderedFields
             foreach (var field in messageInfo.OrderedFields)
             {
@@ -388,6 +390,155 @@ namespace MavLinkSharp.Tests
             }
 
             return CreatePacketRaw(systemId, componentId, sequence, messageId, payload);
+        }
+
+        [Fact]
+        public void MavLinkSigning_CreateKeyAndSign_SignatureValidates()
+        {
+            // Arrange
+            var key = MavLinkSigning.CreateRandomKey();
+            var signing = new MavLinkSigning(key);
+
+            var packet = new byte[] { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 };
+
+            // Act
+            var signature = signing.GenerateSignature(packet);
+            var isValid = signing.ValidateSignature(packet, signature);
+
+            // Assert
+            Assert.True(isValid);
+            Assert.Equal(MavLinkSigning.SignatureLength, signature.Length);
+        }
+
+        [Fact]
+        public void MavLinkSigning_InvalidSignature_FailsValidation()
+        {
+            // Arrange
+            var key1 = MavLinkSigning.CreateRandomKey();
+            var key2 = MavLinkSigning.CreateRandomKey();
+            var signing1 = new MavLinkSigning(key1);
+            var signing2 = new MavLinkSigning(key2);
+
+            var packet = new byte[] { 0x00, 0x01, 0x02, 0x03 };
+
+            // Act
+            var signature = signing1.GenerateSignature(packet);
+            var isValid = signing2.ValidateSignature(packet, signature);
+
+            // Assert
+            Assert.False(isValid);
+        }
+
+        [Fact]
+        public void MavLinkSigning_TamperedPacket_FailsValidation()
+        {
+            // Arrange
+            var key = MavLinkSigning.CreateRandomKey();
+            var signing = new MavLinkSigning(key);
+
+            var packet = new byte[] { 0x00, 0x01, 0x02, 0x03 };
+            var tamperedPacket = new byte[] { 0x00, 0x01, 0x02, 0x99 };
+
+            // Act
+            var signature = signing.GenerateSignature(packet);
+            var isValid = signing.ValidateSignature(tamperedPacket, signature);
+
+            // Assert
+            Assert.False(isValid);
+        }
+
+        [Fact]
+        public void MavLinkSigning_FromPassphrase_GeneratesValidSignature()
+        {
+            // Arrange
+            var signing = new MavLinkSigning("my-secret-passphrase");
+            var packet = new byte[] { 0x10, 0x20, 0x30 };
+
+            // Act
+            var signature = signing.GenerateSignature(packet);
+            var isValid = signing.ValidateSignature(packet, signature);
+
+            // Assert
+            Assert.True(isValid);
+        }
+
+        [Fact]
+        public void SignedFrame_RoundTrip_ParsesAndValidates()
+        {
+            // Arrange
+            var key = MavLinkSigning.CreateRandomKey();
+            var signing = new MavLinkSigning(key);
+
+            var frame = new Frame();
+            frame.StartMarker = Protocol.V2.StartMarker;
+            frame.SystemId = 1;
+            frame.ComponentId = 1;
+            frame.PacketSequence = 0;
+            frame.MessageId = 0; // HEARTBEAT
+            frame.Message = MavLinkContext.Default.Metadata.MessagesDictionary[0];
+            frame.SetFields(new Dictionary<string, object>()
+            {
+                { "type", (byte)8 },
+                { "autopilot", (byte)0 },
+                { "base_mode", (byte)0 },
+                { "custom_mode", (uint)0 },
+                { "system_status", (byte)0 },
+                { "mavlink_version", (byte)3 }
+            });
+            frame.EnableSigning(signing);
+
+            // Act - Serialize
+            var packet = frame.ToBytes();
+
+            // Parse the signed packet
+            var parsedFrame = new Frame();
+            parsedFrame.Signing = signing;
+            var result = parsedFrame.TryParse(packet);
+
+            // Assert
+            Assert.True(result);
+            Assert.True(parsedFrame.HasSignature);
+            Assert.Equal(frame.SystemId, parsedFrame.SystemId);
+            Assert.Equal(frame.MessageId, parsedFrame.MessageId);
+        }
+
+        [Fact]
+        public void SignedFrame_InvalidSignature_FailsParsing()
+        {
+            // Arrange
+            var key1 = MavLinkSigning.CreateRandomKey();
+            var key2 = MavLinkSigning.CreateRandomKey();
+            var signing1 = new MavLinkSigning(key1);
+            var signing2 = new MavLinkSigning(key2);
+
+            var frame = new Frame();
+            frame.StartMarker = Protocol.V2.StartMarker;
+            frame.SystemId = 1;
+            frame.ComponentId = 1;
+            frame.PacketSequence = 0;
+            frame.MessageId = 0;
+            frame.Message = MavLinkContext.Default.Metadata.MessagesDictionary[0];
+            frame.EnableSigning(signing1);
+            frame.SetFields(new Dictionary<string, object>()
+            {
+                { "type", (byte)8 },
+                { "autopilot", (byte)0 },
+                { "base_mode", (byte)0 },
+                { "custom_mode", (uint)0 },
+                { "system_status", (byte)0 },
+                { "mavlink_version", (byte)3 }
+            });
+
+            var packet = frame.ToBytes();
+
+            // Act - Try to parse with different key
+            var parsedFrame = new Frame();
+            parsedFrame.Signing = signing2;
+            var result = parsedFrame.TryParse(packet);
+
+            // Assert
+            Assert.False(result);
+            Assert.Equal(ErrorReason.BadSignature, parsedFrame.ErrorReason);
         }
 
         private void WriteValue(ref Span<byte> span, Type type, object value)

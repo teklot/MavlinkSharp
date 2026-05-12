@@ -59,9 +59,9 @@ namespace MavLinkSharp
         /// </summary>
         public ushort Checksum { get; internal set; }
         /// <summary>
-        /// MAVLink 2 signature for signing packets. If null, the frame is not signed.
+        /// MAVLink 2 signature for signing packets. If empty, the frame is not signed.
         /// </summary>
-        public byte[] Signature { get; } = new byte[13];
+        public byte[] Signature { get; internal set; } = new byte[13];
 
         /// <summary>
         /// The dialect context to use for parsing and message metadata.
@@ -70,9 +70,22 @@ namespace MavLinkSharp
         public MavLinkContext Context { get; set; } = MavLinkContext.Default;
 
         /// <summary>
+        /// Gets the signing configuration for this frame, if available.
+        /// </summary>
+        public MavLinkSigning Signing { get; set; }
+
+        /// <summary>
         /// Indicates whether the frame includes a signature.
         /// </summary>
-        public bool HasSignature { get; internal set; }
+        public bool HasSignature
+        {
+            get
+            {
+                return Signature != null && Signature.Length > 0 &&
+                       IncompatibilityFlags.HasValue &&
+                       (IncompatibilityFlags.Value & MavLinkSigning.SigningFlag) != 0;
+            }
+        }
 
         /// <summary>
         /// Gets the total length of the packet in bytes.
@@ -84,7 +97,7 @@ namespace MavLinkSharp
                 bool isV2 = StartMarker == Protocol.V2.StartMarker || StartMarker == 0;
                 int headerLen = isV2 ? Protocol.V2.HeaderLength : Protocol.V1.HeaderLength;
                 int len = headerLen + PayloadLength + Protocol.V1.ChecksumLength;
-                if (isV2 && HasSignature) len += Protocol.V2.SignatureLength;
+                if (isV2 && Signing != null) len += Protocol.V2.SignatureLength;
                 return len;
             }
         }
@@ -111,8 +124,8 @@ namespace MavLinkSharp
                     if (Message != null)
                     {
                         // Use MaxPayloadLength for MAVLink 2 because we clear the buffer up to that point in TryParse
-                        int readLength = StartMarker == Protocol.V2.StartMarker 
-                            ? Message.MaxPayloadLength 
+                        int readLength = StartMarker == Protocol.V2.StartMarker
+                            ? Message.MaxPayloadLength
                             : Message.PayloadLength;
 
                         ReadOnlySpan<byte> span = Payload.AsSpan(0, readLength);
@@ -239,7 +252,7 @@ namespace MavLinkSharp
         {
             var span = GetFieldSpan(name, out var field);
             if (field.ArrayLength == 0) throw new InvalidOperationException($"Field '{name}' is not an array.");
-            
+
             // Fast path for supported types using MemoryMarshal.Cast
             if (typeof(T) == typeof(byte)) return (T[])(object)span.ToArray();
             if (typeof(T) == typeof(sbyte)) return (T[])(object)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, sbyte>(span).ToArray();
@@ -285,11 +298,11 @@ namespace MavLinkSharp
             MessageId = 0;
             Message = null;
             Checksum = 0;
-            HasSignature = false;
+            Signature = new byte[13];
             Timestamp = DateTime.UtcNow;
             _fields = null;
             ErrorReason = ErrorReason.None;
-            // Note: Context is preserved
+            // Note: Context and Signing are preserved
         }
 
         /// <summary>
@@ -309,6 +322,26 @@ namespace MavLinkSharp
             }
 
             PayloadLength = (byte)Message.PayloadLength;
+        }
+
+        /// <summary>
+        /// Enables MAVLink 2 signing on this frame.
+        /// </summary>
+        /// <param name="signing">The signing configuration to use.</param>
+        /// <param name="linkId">Optional link ID override. If null, uses the link ID from the signing configuration.</param>
+        public void EnableSigning(MavLinkSigning signing, byte? linkId = null)
+        {
+            if (signing == null)
+                throw new ArgumentNullException(nameof(signing));
+
+            Signing = signing;
+            StartMarker = Protocol.V2.StartMarker;
+
+            if (linkId.HasValue)
+                signing.LinkId = linkId.Value;
+
+            // Mark that we want signing (actual flag is set during serialization)
+            Signature = new byte[MavLinkSigning.SignatureLength];
         }
 
         /// <summary>
@@ -334,7 +367,12 @@ namespace MavLinkSharp
 
             if (isV2)
             {
-                destination[2] = IncompatibilityFlags ?? 0;
+                // Set incompatibility flags - include signing flag if signing is enabled
+                byte incompatFlags = IncompatibilityFlags ?? 0;
+                if (Signing != null)
+                    incompatFlags |= MavLinkSigning.SigningFlag;
+                destination[2] = incompatFlags;
+
                 destination[3] = CompatibilityFlags ?? 0;
                 destination[4] = PacketSequence;
                 destination[5] = SystemId;
@@ -359,9 +397,14 @@ namespace MavLinkSharp
 
             BinaryPrimitives.WriteUInt16LittleEndian(destination.Slice(headerLen + PayloadLength), checksum);
 
-            if (isV2 && HasSignature)
+            // Handle signing for MAVLink 2
+            if (isV2 && Signing != null)
             {
-                Signature.AsSpan(0, Protocol.V2.SignatureLength).CopyTo(destination.Slice(headerLen + PayloadLength + Protocol.V2.ChecksumLength));
+                // Signing data is header (without start marker) + payload + checksum
+                // Start marker (index 0) is NOT included in signing data
+                var signingData = destination.Slice(1, (headerLen - 1) + PayloadLength + Protocol.V2.ChecksumLength);
+                var signature = Signing.GenerateSignature(signingData);
+                signature.CopyTo(destination.Slice(headerLen + PayloadLength + Protocol.V2.ChecksumLength));
             }
 
             bytesWritten = totalLen;
@@ -624,7 +667,7 @@ namespace MavLinkSharp
             {
                 packet.Slice(pls, this.PayloadLength).CopyTo(this.Payload);
 
-                // If the payload is shorter than the message's maximum payload length, 
+                // If the payload is shorter than the message's maximum payload length,
                 // the remaining bytes should be treated as zero (MAVLink 2 truncation).
                 if (this.PayloadLength < message.MaxPayloadLength)
                 {
@@ -636,6 +679,20 @@ namespace MavLinkSharp
                 this.ErrorReason = ErrorReason.PayloadLengthInvalid;
 
                 return false;
+            }
+
+            // Check if this packet has a signature based on incompatibility flags
+            bool hasSignatureFlag = this.IncompatibilityFlags.HasValue &&
+                                    (this.IncompatibilityFlags.Value & MavLinkSigning.SigningFlag) != 0;
+
+            if (hasSignatureFlag)
+            {
+                // Packet should have signature - verify we have enough data
+                if (packet.Length < ple + Protocol.V2.ChecksumLength + Protocol.V2.SignatureLength)
+                {
+                    this.ErrorReason = ErrorReason.SignatureLengthInvalid;
+                    return false;
+                }
             }
 
             if (packet.Length < ple + Protocol.V2.ChecksumLength)
@@ -660,22 +717,32 @@ namespace MavLinkSharp
                 return false;
             }
 
-            var signatureOffset = ple + Protocol.V2.ChecksumLength;
-
-            // Check if the packet includes a signature
-            if (packet.Length > signatureOffset)
+            // Handle signature if present
+            if (hasSignatureFlag || Signing != null)
             {
-                if (packet.Length < signatureOffset + Protocol.V2.SignatureLength)
-                {
-                    this.ErrorReason = ErrorReason.SignatureLengthInvalid;
+                var signatureOffset = ple + Protocol.V2.ChecksumLength;
 
-                    return false;
+                if (packet.Length >= signatureOffset + Protocol.V2.SignatureLength)
+                {
+                    this.Signature = new byte[Protocol.V2.SignatureLength];
+                    packet.Slice(signatureOffset, Protocol.V2.SignatureLength).CopyTo(this.Signature);
+
+                    // Validate signature if signing is configured
+                    if (Signing != null)
+                    {
+                        // The data to validate is: header (without start marker) + payload + checksum
+                        var packetForSigning = packet.Slice(offset + 1, (ple - offset - 1) + Protocol.V2.ChecksumLength);
+                        if (!Signing.ValidateSignature(packetForSigning, this.Signature))
+                        {
+                            this.ErrorReason = ErrorReason.BadSignature;
+                            return false;
+                        }
+                    }
                 }
                 else
                 {
-                    packet.Slice(signatureOffset, Protocol.V2.SignatureLength).CopyTo(this.Signature);
-
-                    this.HasSignature = true;
+                    this.ErrorReason = ErrorReason.SignatureLengthInvalid;
+                    return false;
                 }
             }
 

@@ -45,5 +45,9 @@
         /// The signature length in a MAVLink 2 frame is invalid.
         /// </summary>
         SignatureLengthInvalid,
+        /// <summary>
+        /// The signature on a MAVLink 2 frame is invalid or could not be verified.
+        /// </summary>
+        BadSignature,
     }
 }

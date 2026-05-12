@@ -1,14 +1,15 @@
-﻿# MavLinkSharp v1.6.1
+﻿# MavLinkSharp v1.7.0
 
-MavlinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink.io/) v1/v2 raw messages using standard or custom dialects. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.
+MavlinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink.io/) v1/v2 raw messages using standard or custom dialects. **No code generation required** — load any MAVLink XML dialect at runtime and start parsing immediately. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.
 
 ## Features
- - **Runtime Dialect Parsing:** Consumes standard MAVLink XML dialect files at runtime. No code generation required.
+ - **Runtime Dialect Parsing:** Consumes standard MAVLink XML dialect files at runtime. **No code generation required.**
  - **Extensible:** Supports custom dialects with no extra effort. Just provide the XML file.
  - **High Performance:** Designed for speed and low allocation to handle high-throughput MAVLink streams.
  - **Streaming Ready:** Built-in support for `System.IO.Pipelines` (`PipeReader`) to handle fragmented data streams efficiently.
  - **Cross-Platform:** Can be used on any platform that supports .NET Standard 2.0 (Windows, Linux, macOS, etc.).
  - **Minimal Dependencies:** Only requires `System.Memory` and `System.IO.Pipelines`.
+ - **MAVLink 2 Signing:** Full support for MAVLink 2 packet signing using HMAC-SHA256 with timestamp validation.
 
 ## Supported Frameworks
 
@@ -45,6 +46,8 @@ Using the library involves four main steps:
 
 ## Dialect Handling
 
+> **⚡ No Code Generation Required** — Unlike traditional MAVLink libraries that require pre-generating C# code from XML, MavLinkSharp parses dialect files **at runtime**. Add a new dialect XML file, restart your app, and you're done.
+
 The `MavLinkSharp` library utilizes a **runtime parsing mechanism** for [MAVLink XML dialect files](https://mavlink.io/en/guide/xml_schema.html). This means message definitions are loaded and processed dynamically when your application starts, rather than requiring code generation.
 
 ### Using Standard Dialects
@@ -70,6 +73,8 @@ MavLink.Initialize("path-to/my-custom-dialect.xml");
 
 If your custom dialect includes other dialects, `MavLinkSharp` will automatically load them recursively as specified in your custom XML file.
 
+> **💡 Tip:** Need to support a new vehicle type? Just drop its `vehicle.xml` dialect file into your project and call `MavLink.Initialize("vehicle.xml")`. No code generation step, no build-time tools, no manual mapping.
+
 ## Filtering Messages
 
 The `MavLinkSharp` library offers flexible control over which MAVLink messages are parsed, allowing you to optimize for performance by only processing messages relevant to your application.
@@ -80,11 +85,11 @@ Message filtering begins with the `MavLink.Initialize()` method. This method loa
 
 The `MavLink.Initialize()` method has the following signatures:
 ```cs
-public static void Initialize(DialectType dialogType, params uint[] messageIds)
+public static void Initialize(DialectType dialectType, params uint[] messageIds)
 
 public static void Initialize(string dialectPath, params uint[] messageIds)
 ```
-*   **`dialogType/dialectPath`**: (Required) The type of or path to the main dialect file to load.
+*   **`dialectType/dialectPath`**: (Required) The type of or path to the main dialect file to load.
 *   **`messageIds`**: (Optional) A list of specific MAVLink message IDs (`uint`) you wish to enable for parsing immediately upon initialization.
     *   If **`messageIds` are provided**, only those specified messages will be marked for parsing.
     *   If **`messageIds` are omitted (or an empty array is passed)**, then *all messages* defined in the loaded dialect(s) will be initially marked for parsing.
@@ -131,6 +136,121 @@ After initialization, you can further fine-tune which messages are parsed using 
     ```
 
 After initialization and any fine-tuning, process incoming byte streams with `frame.TryParse()`. Only the enabled messages (including HEARTBEAT) will yield a valid `Frame` object.
+
+## MAVLink 2 Signing
+
+Starting with version 1.7.0, `MavLinkSharp` supports **MAVLink 2 packet signing** using HMAC-SHA256. This provides authentication and integrity verification for MAVLink 2 packets.
+
+### Key Features
+- **HMAC-SHA256 Signatures:** 13-byte signatures (1 byte link ID + 6 bytes timestamp + 6 bytes truncated HMAC)
+- **Timestamp Validation:** Configurable timestamp window (default: 10 seconds) to prevent replay attacks
+- **Passphrase-based Keys:** Generate signing keys from passphrases using SHA-256
+- **Random Key Generation:** Create cryptographically secure random 32-byte keys
+
+### Quick Start
+
+```cs
+using MavLinkSharp;
+
+// 1. Create a signing configuration (from passphrase or random key)
+var signing = new MavLinkSigning("my-secret-passphrase");
+// Or: var key = MavLinkSigning.CreateRandomKey();
+// Or: var signing = new MavLinkSigning(key);
+
+// 2. Create and configure a frame
+var frame = new Frame();
+frame.StartMarker = Protocol.V2.StartMarker;
+frame.SystemId = 1;
+frame.ComponentId = 1;
+frame.PacketSequence = 0;
+frame.MessageId = 0; // HEARTBEAT
+frame.Message = MavLinkContext.Default.Metadata.MessagesDictionary[0];
+frame.SetFields(new Dictionary<string, object>()
+{
+    { "type", (byte)8 },
+    { "autopilot", (byte)0 },
+    { "base_mode", (byte)0 },
+    { "custom_mode", (uint)0 },
+    { "system_status", (byte)0 },
+    { "mavlink_version", (byte)3 }
+});
+
+// 3. Enable signing on the frame
+frame.EnableSigning(signing);
+
+// 4. Serialize to bytes (signature is automatically appended)
+byte[] signedPacket = frame.ToBytes();
+
+// 5. Parse and validate on the receiving end
+var parsedFrame = new Frame();
+parsedFrame.Signing = signing; // Assign the same signing configuration
+if (parsedFrame.TryParse(signedPacket))
+{
+    Console.WriteLine($"Valid signed packet received: Message ID {parsedFrame.MessageId}");
+}
+else
+{
+    Console.WriteLine($"Invalid packet: {parsedFrame.ErrorReason}");
+}
+```
+
+### Using Different Keys for Different Systems
+
+```cs
+// Create signing configurations for different systems
+var signing1 = new MavLinkSigning("vehicle-1-key");
+var signing2 = new MavLinkSigning("vehicle-2-key");
+
+// Each frame can have its own signing configuration
+frame1.EnableSigning(signing1);
+frame2.EnableSigning(signing2);
+
+// When parsing, assign the appropriate signing configuration
+parsedFrame.Signing = signing1; // or signing2, depending on sender
+```
+
+### API Reference
+
+#### MavLinkSigning Class
+
+```cs
+public class MavLinkSigning
+{
+    // Constants
+    public const byte SigningFlag = 0x01;
+    public const int SecretKeyLength = 32;
+    public const int SignatureLength = 13;
+    public const long DefaultTimestampWindow = 10_000_000; // 10 seconds in microseconds
+
+    // Properties
+    public byte LinkId { get; set; }
+    public bool AcceptTimestampsBeforeTimestamp { get; set; }
+    public ReadOnlySpan<byte> SecretKey { get; }
+
+    // Constructors
+    public MavLinkSigning(byte[] secretKey); // 32-byte key
+    public MavLinkSigning(string passphrase); // SHA-256 hashed passphrase
+
+    // Methods
+    public byte[] GenerateSignature(ReadOnlySpan<byte> packet);
+    public bool ValidateSignature(ReadOnlySpan<byte> packet, ReadOnlySpan<byte> signature);
+    public long GetCurrentTimestamp();
+    public static byte[] CreateRandomKey();
+}
+```
+
+#### Frame Extensions
+
+```cs
+public class Frame
+{
+    public MavLinkSigning? Signing { get; set; }
+    public byte[]? Signature { get; set; }
+    public bool HasSignature { get; }
+
+    public void EnableSigning(MavLinkSigning signing, byte? linkId = null);
+}
+```
 
 ## Code Example
 ```cs
@@ -310,3 +430,31 @@ These benchmarks help identify performance bottlenecks and track optimizations w
     dotnet run -c Release --project MavLinkSharp.Benchmark/MavLinkSharp.Benchmark.csproj -- --filter *
     ```
     The `--filter *` argument ensures all benchmarks within the project are executed. BenchmarkDotNet will produce detailed reports in the `BenchmarkDotNet.Artifacts/results` directory.
+
+## MavLinkSharp vs pymavlink
+
+If you're coming from the Python ecosystem, you're likely familiar with [pymavlink](https://github.com/ArduPilot/pymavlink). Here's how the two libraries compare:
+
+| Aspect | MavLinkSharp | pymavlink |
+|--------|-------------|-----------|
+| **Language** | C# (.NET) | Python |
+| **Dialect Handling** | **Runtime parsing** — XML files are loaded and parsed at startup. No code generation. | **Code generation** — XML files must be pre-processed with `mavgen.py` to produce Python code. |
+| **Adding a New Dialect** | Drop the XML file into your project and call `MavLink.Initialize("dialect.xml")`. Restart and go. | Run `mavgen.py` to regenerate Python modules, update imports, and redeploy. |
+| **Performance** | Compiled .NET with `Span<T>` optimizations, zero-allocation parsing paths. Significantly faster for high-throughput scenarios. | Interpreted Python — suitable for moderate throughput, but GC and GIL can be bottlenecks under load. |
+| **Streaming** | Built-in `System.IO.Pipelines` support for zero-copy async stream parsing. | Manual buffering required. |
+| **AOT / Native Compilation** | Supports .NET Native AOT — compile to a single native binary with no dependencies. | Not applicable (Python). |
+| **Platform** | Cross-platform (Windows, Linux, macOS) via .NET. | Cross-platform (Python runtime required). |
+| **Typical Use Case** | High-performance .NET applications: GCS software, telemetry gateways, real-time services, embedded Linux systems. | Python scripting, testing, simulation tooling, research workflows, companion-computer utilities. |
+
+### When to Choose MavLinkSharp
+
+- You're building a .NET application (C#, F#, VB.NET) and want **native performance** with **no code generation overhead**.
+- You need **high-throughput MAVLink parsing** (e.g., recording full telemetry streams, gateway services).
+- You want **AOT-compiled standalone binaries** for deployment without a runtime.
+- You need built-in **MAVLink 2 signing** support.
+
+### When to Choose pymavlink
+
+- You're working in **Python** and need tight integration with Python-based tools.
+- You're doing **quick prototyping, testing, or data analysis** in Jupyter notebooks.
+- You need the extensive protocol-level utilities pymavlink provides (parameter handling, firmware upload, etc.).

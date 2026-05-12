@@ -7,7 +7,7 @@
 		<Nullable>disable</Nullable>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<Title>MAVLinkSharp</Title>
-		<Version>1.6.1</Version>
+		<Version>1.7.0</Version>
 		<Authors>TekLot,$(AssemblyName)</Authors>
 		<Description>MavlinkSharp is a lightweight .NET library for parsing MAVLink v1/v2 raw messages using standard or custom dialects. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.</Description>
 		<Copyright>Copyright © 2026 TekLot</Copyright>
@@ -27,8 +27,11 @@
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<PackageReleaseNotes>
-			- Resolved missing dialects in executable projects by copying transitive targets.
-			- Improved runtime path resolution relative to AppContext.BaseDirectory.
+			- Added MAVLink 2 Signing support using HMAC-SHA256
+			- Added support for passphrase-based keys (SHA-256) and random key generation
+			- Added timestamp validation with configurable window (default: 10 seconds)
+			- Added ErrorReason.BadSignature and ErrorReason.SignatureLengthInvalid
+			- All signing operations are thread-safe with internal locking
 		</PackageReleaseNotes>
 	</PropertyGroup>
 
@@ -43,7 +46,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="System.Memory" Version="4.6.3" />
-		<PackageReference Include="System.IO.Pipelines" Version="9.0.1" />
+		<PackageReference Include="System.IO.Pipelines" Version="10.0.7" />
 		<PackageReference Include="System.Buffers" Version="4.6.1" />
 	</ItemGroup>
 
