@@ -1,4 +1,4 @@
-﻿# MavLinkSharp v1.7.0
+﻿# MavLinkSharp v1.7.1
 
 MavlinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink.io/) v1/v2 raw messages using standard or custom dialects. **No code generation required** — load any MAVLink XML dialect at runtime and start parsing immediately. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.
 

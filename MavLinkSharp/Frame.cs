@@ -97,7 +97,7 @@ namespace MavLinkSharp
                 bool isV2 = StartMarker == Protocol.V2.StartMarker || StartMarker == 0;
                 int headerLen = isV2 ? Protocol.V2.HeaderLength : Protocol.V1.HeaderLength;
                 int len = headerLen + PayloadLength + Protocol.V1.ChecksumLength;
-                if (isV2 && Signing != null) len += Protocol.V2.SignatureLength;
+                if (isV2 && (HasSignature || Signing != null)) len += Protocol.V2.SignatureLength;
                 return len;
             }
         }

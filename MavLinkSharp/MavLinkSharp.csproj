@@ -7,7 +7,7 @@
 		<Nullable>disable</Nullable>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<Title>MAVLinkSharp</Title>
-		<Version>1.7.0</Version>
+		<Version>1.7.1</Version>
 		<Authors>TekLot,$(AssemblyName)</Authors>
 		<Description>MavlinkSharp is a lightweight .NET library for parsing MAVLink v1/v2 raw messages using standard or custom dialects. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.</Description>
 		<Copyright>Copyright © 2026 TekLot</Copyright>
@@ -27,11 +27,9 @@
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<PackageReleaseNotes>
-			- Added MAVLink 2 Signing support using HMAC-SHA256
-			- Added support for passphrase-based keys (SHA-256) and random key generation
-			- Added timestamp validation with configurable window (default: 10 seconds)
-			- Added ErrorReason.BadSignature and ErrorReason.SignatureLengthInvalid
-			- All signing operations are thread-safe with internal locking
+			- Fixed Frame.PacketLength now checks HasSignature in addition to Signing != null to correctly account for both parsed signed frames and frames being built
+			- Fixed System.IO.Pipelines dependency incompatibility with netstandard2.0
+			- Scoped System.Memory and System.Buffers to netstandard2.0 only
 		</PackageReleaseNotes>
 	</PropertyGroup>
 
@@ -44,10 +42,14 @@
 		</Content>
 	</ItemGroup>
 
-	<ItemGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
 		<PackageReference Include="System.Memory" Version="4.6.3" />
-		<PackageReference Include="System.IO.Pipelines" Version="10.0.7" />
+		<PackageReference Include="System.IO.Pipelines" Version="5.0.2" />
 		<PackageReference Include="System.Buffers" Version="4.6.1" />
+	</ItemGroup>
+
+	<ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+		<PackageReference Include="System.IO.Pipelines" Version="10.0.7" />
 	</ItemGroup>
 
 	<ItemGroup>
