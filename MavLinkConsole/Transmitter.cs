@@ -1,7 +1,7 @@
 using MavLinkSharp;
+using MavLinkSharp.Protocols;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 
 namespace MavLinkConsole;
 
@@ -9,6 +9,7 @@ static class Transmitter
 {
     private static readonly Random random = new();
     private static byte packetSequence = 0;
+    private static int messageCount = 0;
 
     public static void Run(UdpClient udpClient, IPEndPoint remoteEndPoint)
     {
@@ -21,47 +22,83 @@ static class Transmitter
 
         while (true)
         {
-            // Select a random message ID
-            uint randomMessageId = messageIds[random.Next(messageIds.Count)];
+            messageCount++;
 
-            if (Metadata.Messages.TryGetValue(randomMessageId, out var message))
+            // Every 5th message, demonstrate CommandProtocol by sending a COMMAND_LONG
+            if (messageCount % 5 == 0)
             {
-                byte systemId = (byte)random.Next(1, 255);
-                byte componentId = (byte)random.Next(1, 255);
-
-                var fieldValues = GenerateFieldValues(message, random);
-
-                var frame = new Frame
-                {
-                    StartMarker = Protocol.V2.StartMarker,
-                    SystemId = systemId,
-                    ComponentId = componentId,
-                    MessageId = randomMessageId,
-                    Message = message,
-                    PacketSequence = packetSequence
-                };
-
-                frame.SetFields(fieldValues);
-
-                byte[] packet = frame.ToBytes();
-
-                udpClient.Send(packet, packet.Length, remoteEndPoint);
-
-                TerminalLayout.WriteTx($"Tx => " +
-                    $"Seq: {packetSequence:D3}, " +
-                    $"SysId: {systemId:X2}, " +
-                    $"CompId: {componentId:X2}, " +
-                    $"Id: {message.Id:X4}, " +
-                    $"Name: {message.Name}");
-                
-                packetSequence++; // Increment sequence number
+                SendCommandLong(udpClient, remoteEndPoint);
             }
             else
             {
-                TerminalLayout.WriteTx($"Tx: Could not find message definition for ID: {randomMessageId}");
+                SendRandomMessage(udpClient, remoteEndPoint, messageIds);
             }
 
             Thread.Sleep(100); // Send message every 100ms
+        }
+    }
+
+    private static void SendCommandLong(UdpClient udpClient, IPEndPoint remoteEndPoint)
+    {
+        var frame = CommandProtocol.CreateCommandLong(
+            MavLinkContext.Default,
+            systemId: 1,
+            componentId: 1,
+            targetSystem: 2,
+            targetComponent: 1,
+            command: 180, // MAV_CMD_DO_CHANGE_SPEED
+            parameters: [1f, 5f, 0f, 0f, 0f, 0f, 0f],
+            confirmation: 0,
+            sequence: packetSequence);
+
+        byte[] packet = frame.ToBytes();
+        udpClient.Send(packet, packet.Length, remoteEndPoint);
+
+        TerminalLayout.WriteTx($"Tx => Seq: {packetSequence:D3}, Cmd: DO_CHANGE_SPEED (180), " +
+            $"params: [1f, 5f] (COMMAND_LONG via CommandProtocol)");
+        packetSequence++;
+    }
+
+    private static void SendRandomMessage(UdpClient udpClient, IPEndPoint remoteEndPoint, List<uint> messageIds)
+    {
+        // Select a random message ID
+        uint randomMessageId = messageIds[random.Next(messageIds.Count)];
+
+        if (Metadata.Messages.TryGetValue(randomMessageId, out var message))
+        {
+            byte systemId = (byte)random.Next(1, 255);
+            byte componentId = (byte)random.Next(1, 255);
+
+            var fieldValues = GenerateFieldValues(message, random);
+
+            var frame = new Frame
+            {
+                StartMarker = Protocol.V2.StartMarker,
+                SystemId = systemId,
+                ComponentId = componentId,
+                MessageId = randomMessageId,
+                Message = message,
+                PacketSequence = packetSequence
+            };
+
+            frame.SetFields(fieldValues);
+
+            byte[] packet = frame.ToBytes();
+
+            udpClient.Send(packet, packet.Length, remoteEndPoint);
+
+            TerminalLayout.WriteTx($"Tx => " +
+                $"Seq: {packetSequence:D3}, " +
+                $"SysId: {systemId:X2}, " +
+                $"CompId: {componentId:X2}, " +
+                $"Id: {message.Id:X4}, " +
+                $"Name: {message.Name}");
+
+            packetSequence++; // Increment sequence number
+        }
+        else
+        {
+            TerminalLayout.WriteTx($"Tx: Could not find message definition for ID: {randomMessageId}");
         }
     }
 

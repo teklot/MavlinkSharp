@@ -7,7 +7,7 @@
 		<Nullable>disable</Nullable>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<Title>MAVLinkSharp</Title>
-		<Version>1.7.1</Version>
+		<Version>1.8.0</Version>
 		<Authors>TekLot,$(AssemblyName)</Authors>
 		<Description>MavlinkSharp is a lightweight .NET library for parsing MAVLink v1/v2 raw messages using standard or custom dialects. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.</Description>
 		<Copyright>Copyright © 2026 TekLot</Copyright>
@@ -17,7 +17,10 @@
 		<PackageTags>
 			MAVLink;MAVLinkParser;ArduPilot;PX4;Drone;UAV;UAS;Telemetry;
 			TelemetryParser;FlightControl;Autopilot;MissionPlanner;
-			GCS;GroundStation;Robotics;Aerospace;Communication
+			GCS;GroundStation;Robotics;Aerospace;Communication;
+			mavlink-dotnet;csharp-library;dotnet-library;telemetry-parser;
+			protocol-parser;ground-control-station;flight-controller;
+			serial-communication;udp-telemetry
 		</PackageTags>
 		<PackageProjectUrl>https://github.com/teklot/mavlinksharp</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/teklot/mavlinksharp.git</RepositoryUrl>
@@ -27,9 +30,7 @@
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<PackageReleaseNotes>
-			- Fixed Frame.PacketLength now checks HasSignature in addition to Signing != null to correctly account for both parsed signed frames and frames being built
-			- Fixed System.IO.Pipelines dependency incompatibility with netstandard2.0
-			- Scoped System.Memory and System.Buffers to netstandard2.0 only
+			- Added high-level API for sending MAVLink commands and handling acknowledgements with timeout, retry, and progress support
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

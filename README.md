@@ -1,6 +1,11 @@
-﻿# MavLinkSharp v1.7.1
+﻿# MavLinkSharp — .NET MAVLink Library: Parse & Send Drone Telemetry, UAV Messages & MAVLink Protocol Packets
 
-MavlinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink.io/) v1/v2 raw messages using standard or custom dialects. **No code generation required** — load any MAVLink XML dialect at runtime and start parsing immediately. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.
+[![NuGet Version](https://img.shields.io/nuget/v/MavLinkSharp)](https://www.nuget.org/packages/MavLinkSharp/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/MavLinkSharp)](https://www.nuget.org/packages/MavLinkSharp/)
+[![.NET](https://img.shields.io/badge/.NET-net10.0%20%7C%20netstandard2.0-blue)](https://dotnet.microsoft.com/)
+[![License](https://img.shields.io/github/license/teklot/MavLinkSharp)](LICENSE)
+
+MavLinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink.io/) v1/v2 protocol messages from drones, UAVs, and autopilot systems. It works with ArduPilot, PX4, and any MAVLink-compatible flight controller. **No code generation required** — load any MAVLink XML dialect at runtime and start parsing telemetry data immediately. It also provides tools for constructing and encoding MAVLink packets for transmission over serial, UDP, TCP, or any other transport.
 
 ## Features
  - **Runtime Dialect Parsing:** Consumes standard MAVLink XML dialect files at runtime. **No code generation required.**
@@ -10,6 +15,7 @@ MavlinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink
  - **Cross-Platform:** Can be used on any platform that supports .NET Standard 2.0 (Windows, Linux, macOS, etc.).
  - **Minimal Dependencies:** Only requires `System.Memory` and `System.IO.Pipelines`.
  - **MAVLink 2 Signing:** Full support for MAVLink 2 packet signing using HMAC-SHA256 with timestamp validation.
+ - **Command Protocol:** High-level API for sending commands (`COMMAND_LONG`/`COMMAND_INT`) and handling acknowledgements (`COMMAND_ACK`) with built-in timeout, retry, and progress support.
 
 ## Supported Frameworks
 
@@ -136,6 +142,87 @@ After initialization, you can further fine-tune which messages are parsed using 
     ```
 
 After initialization and any fine-tuning, process incoming byte streams with `frame.TryParse()`. Only the enabled messages (including HEARTBEAT) will yield a valid `Frame` object.
+
+## Command Protocol
+
+Starting with version 1.8.0, `MavLinkSharp` provides a high-level **Command Protocol** (`MavLinkSharp.Protocols`) for sending MAVLink commands and processing acknowledgements without manual handshake logic.
+
+### API Overview
+
+| Method | Description |
+|--------|-------------|
+| `CommandProtocol.CreateCommandLong()` | Builds a `COMMAND_LONG` frame with up to 7 float parameters |
+| `CommandProtocol.CreateCommandInt()` | Builds a `COMMAND_INT` frame with integer coordinates and up to 4 float parameters |
+| `CommandProtocol.TryParseCommandAck()` | Safely parses a `COMMAND_ACK` frame into a `CommandResult` |
+| `CommandProtocol.CreateCommandCancel()` | Builds a `COMMAND_CANCEL` frame |
+| `CommandProtocol.SendCommandAsync()` | Sends a command and waits for a matching `COMMAND_ACK` with configurable timeout, retries, and progress reporting |
+
+### CommandResult
+
+```cs
+public class CommandResult
+{
+    public ushort Command { get; set; }
+    public MavResult Result { get; set; }
+    public byte Progress { get; set; }
+    public int ResultParam2 { get; set; }
+    public bool Success => Result == MavResult.Accepted;
+}
+```
+
+### MavResult Enum
+
+| Value | Description |
+|-------|-------------|
+| `Accepted` | Command was accepted and executed |
+| `TemporarilyRejected` | Command temporarily rejected (vehicle busy) |
+| `Denied` | Command denied (safety check failed) |
+| `Unsupported` | Command not supported |
+| `Failed` | Command execution failed |
+| `InProgress` | Long-running command in progress |
+| `Cancelled` | Command was cancelled |
+| `CommandDeniedLanding` | Denied because landing is in progress |
+
+### Quick Start
+
+```cs
+using MavLinkSharp;
+using MavLinkSharp.Protocols;
+
+// Initialize with your dialect
+MavLink.Initialize(DialectType.Common);
+
+// 1. Create a COMMAND_LONG frame using the factory
+var commandFrame = CommandProtocol.CreateCommandLong(
+    MavLinkContext.Default,
+    systemId: 1,
+    componentId: 1,
+    targetSystem: 2,
+    targetComponent: 1,
+    command: 180, // MAV_CMD_DO_CHANGE_SPEED
+    parameters: [1f, 5f, 0f, 0f, 0f, 0f, 0f]);
+
+// 2. Serialize and send over your transport
+byte[] packet = commandFrame.ToBytes();
+// udpClient.Send(packet, packet.Length, remoteEndPoint);
+
+// 3. Parse a received COMMAND_ACK
+if (CommandProtocol.TryParseCommandAck(parsedFrame, out var result))
+{
+    Console.WriteLine($"Command {result.Command}: {(result.Success ? "Accepted" : result.Result)}");
+}
+
+// 4. Or use the async send-and-wait convenience method
+var ack = await CommandProtocol.SendCommandAsync(
+    commandFrame,
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)),
+    timeoutMs: 5000,
+    retries: 2);
+
+if (ack.Success)
+    Console.WriteLine("Command accepted!");
+```
 
 ## MAVLink 2 Signing
 
@@ -396,8 +483,8 @@ public async Task ProcessMavLinkStreamAsync(PipeReader reader)
 The `MavLinkConsole` project serves as a practical example demonstrating how to use the `MavLinkSharp` library for both sending and receiving MAVLink messages over UDP, all within a single console application. It's particularly useful for testing, development, and quickly observing MAVLink communication.
 
 *   **`MavLinkConsole` (Transmitter & Receiver):** This console application runs two concurrent tasks:
-    *   **Transmitter (Tx):** Generates and sends synthetic MAVLink messages (e.g., HEARTBEAT, GPS_RAW_INT, ATTITUDE) over UDP to the default MAVLink port (UDP 14550). It showcases how to construct MAVLink `Frame` objects and serialize them into byte arrays for transmission.
-    *   **Receiver (Rx):** Listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `frame.TryParse()` and access the decoded message fields. Tx and Rx are displayed in separate halves of the screen. See the source code for details.
+    *   **Transmitter (Tx):** Generates and sends synthetic MAVLink messages (e.g., HEARTBEAT, GPS_RAW_INT, ATTITUDE) over UDP to the default MAVLink port (UDP 14550). It showcases how to construct MAVLink `Frame` objects and serialize them into byte arrays for transmission. Every 5th message uses the **Command Protocol** to send a `COMMAND_LONG` via `CommandProtocol.CreateCommandLong()`.
+    *   **Receiver (Rx):** Listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `frame.TryParse()` and access the decoded message fields. When a `COMMAND_LONG` is received, it responds with a `COMMAND_ACK`, which is then displayed via `CommandProtocol.TryParseCommandAck()`. Tx and Rx are displayed in separate halves of the screen. See the source code for details.
 
 This example provides a quick way to:
 *   **Test your MAVLinkSharp integration:** Verify that your application can correctly send and receive messages.
@@ -441,6 +528,7 @@ If you're coming from the Python ecosystem, you're likely familiar with [pymavli
 | **Dialect Handling** | **Runtime parsing** — XML files are loaded and parsed at startup. No code generation. | **Code generation** — XML files must be pre-processed with `mavgen.py` to produce Python code. |
 | **Adding a New Dialect** | Drop the XML file into your project and call `MavLink.Initialize("dialect.xml")`. Restart and go. | Run `mavgen.py` to regenerate Python modules, update imports, and redeploy. |
 | **Performance** | Compiled .NET with `Span<T>` optimizations, zero-allocation parsing paths. Significantly faster for high-throughput scenarios. | Interpreted Python — suitable for moderate throughput, but GC and GIL can be bottlenecks under load. |
+| **Command Protocol** | Built-in `CommandProtocol` API with `COMMAND_LONG`/`COMMAND_INT` factories, `COMMAND_ACK` parsing, and async send with timeout/retry. | Manual `mavutil.mavlink.COMMAND_LONG` construction and ACK handling. |
 | **Streaming** | Built-in `System.IO.Pipelines` support for zero-copy async stream parsing. | Manual buffering required. |
 | **AOT / Native Compilation** | Supports .NET Native AOT — compile to a single native binary with no dependencies. | Not applicable (Python). |
 | **Platform** | Cross-platform (Windows, Linux, macOS) via .NET. | Cross-platform (Python runtime required). |
