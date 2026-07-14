@@ -1,5 +1,6 @@
 ﻿# MavLinkSharp — .NET MAVLink Library: Parse & Send Drone Telemetry, UAV Messages & MAVLink Protocol Packets
 
+[![CI](https://github.com/teklot/MavLinkSharp/actions/workflows/ci.yml/badge.svg)](https://github.com/teklot/MavLinkSharp/actions/workflows/ci.yml)
 [![NuGet Version](https://img.shields.io/nuget/v/MavLinkSharp)](https://www.nuget.org/packages/MavLinkSharp/)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/MavLinkSharp)](https://www.nuget.org/packages/MavLinkSharp/)
 [![.NET](https://img.shields.io/badge/.NET-net10.0%20%7C%20netstandard2.0-blue)](https://dotnet.microsoft.com/)

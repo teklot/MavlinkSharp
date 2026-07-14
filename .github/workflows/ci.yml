@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: latest
+
+      - name: Restore
+        run: dotnet restore MavLinkSharp.slnx
+
+      - name: Build
+        run: dotnet build MavLinkSharp.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test MavLinkSharp.slnx --configuration Release --no-build
