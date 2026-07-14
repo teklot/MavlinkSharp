@@ -16,6 +16,7 @@ MavLinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink
  - **Minimal Dependencies:** Only requires `System.Memory` and `System.IO.Pipelines`.
  - **MAVLink 2 Signing:** Full support for MAVLink 2 packet signing using HMAC-SHA256 with timestamp validation.
  - **Command Protocol:** High-level API for sending commands (`COMMAND_LONG`/`COMMAND_INT`) and handling acknowledgements (`COMMAND_ACK`) with built-in timeout, retry, and progress support.
+ - **Connection Manager:** Event-driven `MavLinkConnection` wrapping UDP, TCP, or Serial transports with auto-reconnect, auto-heartbeat, and automatic sequence numbering.
 
 ## Supported Frameworks
 
@@ -223,6 +224,188 @@ var ack = await CommandProtocol.SendCommandAsync(
 if (ack.Success)
     Console.WriteLine("Command accepted!");
 ```
+
+## Connection Manager
+
+Starting with version 1.9.0, `MavLinkSharp` provides a **Connection Manager** (`MavLinkSharp.Connection`) that wraps transport layers with an event-driven API, automatic sequence numbering, heartbeats, and reconnection support.
+
+### Supported Transports
+
+| Transport | Class | Description |
+|-----------|-------|-------------|
+| UDP | `UdpTransport` | Client and server modes, binds to local port, sends to remote endpoint |
+| TCP | `TcpTransport` | Client (connect) and server (listen/accept) modes |
+| Serial | `SerialTransport` | Wraps `System.IO.Ports.SerialPort` for UART communication |
+
+### Key Features
+
+- **Event-driven API:** Subscribe to `Connected`, `Disconnected`, and `PacketReceived` events.
+- **Typed message handlers:** `OnMessage(uint, Action<Frame>)` and `OnMessage(string, Action<Frame>)` for specific message IDs or names.
+- **Command ACK handler:** `OnCommandAck(Action<CommandResult>)` for automatic COMMAND_ACK processing.
+- **Auto-sequence numbering:** `PacketSequence` is incremented automatically on each send.
+- **Auto-heartbeat:** Configurable interval for sending HEARTBEAT messages.
+- **Auto-reconnect:** Reconnects on transport failure with configurable delay and max attempts.
+- **IAsyncDisposable:** Clean async shutdown of transport and background tasks.
+
+### Quick Start
+
+```cs
+using MavLinkSharp;
+using MavLinkSharp.Connection;
+
+// 1. Initialize the library
+MavLink.Initialize(DialectType.Common);
+
+// 2. Create a transport (UDP example)
+var transport = new UdpTransport(localPort: 14550, remoteAddress: "127.0.0.1", remotePort: 14551);
+
+// 3. Configure connection options
+var options = new ConnectionOptions
+{
+    SystemId = 1,
+    ComponentId = 1,
+    HeartbeatIntervalMs = 1000,
+    AutoReconnect = true
+};
+
+// 4. Create the connection
+var connection = new MavLinkConnection(transport, options);
+
+// 5. Subscribe to events
+connection.OnMessage("HEARTBEAT", frame =>
+{
+    byte type = frame.GetByte("type");
+    Console.WriteLine($"System {frame.SystemId} alive, type: {type}");
+});
+
+connection.OnMessage(30, frame => // ATTITUDE
+{
+    float roll = frame.GetSingle("roll");
+    float pitch = frame.GetSingle("pitch");
+    Console.WriteLine($"Attitude: Roll={roll}, Pitch={pitch}");
+});
+
+connection.OnCommandAck(result =>
+{
+    Console.WriteLine($"Command {result.Command}: {(result.Success ? "Accepted" : result.Result)}");
+});
+
+connection.Connected += (s, e) => Console.WriteLine("Connected!");
+connection.Disconnected += (s, e) => Console.WriteLine($"Disconnected: {e.Exception?.Message}");
+
+// 6. Connect and start receiving
+await connection.ConnectAsync();
+
+// 7. Send messages (sequence number is automatic)
+var heartbeatMsg = Metadata.Messages[0]; // HEARTBEAT
+var frame = new Frame
+{
+    StartMarker = Protocol.V2.StartMarker,
+    MessageId = 0,
+    Message = heartbeatMsg
+};
+frame.SetFields(new Dictionary<string, object>
+{
+    ["type"] = (byte)6,
+    ["autopilot"] = (byte)8,
+    ["base_mode"] = (byte)0,
+    ["custom_mode"] = (uint)0,
+    ["system_status"] = (byte)4,
+    ["mavlink_version"] = (byte)3
+});
+await connection.SendAsync(frame);
+
+// 8. Send a command and wait for ACK
+var cmdFrame = CommandProtocol.CreateCommandLong(
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    command: 180, // MAV_CMD_DO_CHANGE_SPEED
+    parameters: [1f, 5f, 0f, 0f, 0f, 0f, 0f]);
+
+var ack = await connection.SendCommandAsync(cmdFrame, timeoutMs: 5000, retries: 2);
+Console.WriteLine($"Command result: {ack.Result}");
+
+// 9. Clean up
+await connection.DisposeAsync();
+```
+
+### Serial Port Example
+
+```cs
+var serialTransport = new SerialTransport("COM3", 115200);
+var connection = new MavLinkConnection(serialTransport, new ConnectionOptions
+{
+    SystemId = 255,
+    ComponentId = 68
+});
+
+connection.OnMessage("HEARTBEAT", frame =>
+    Console.WriteLine($"Vehicle {frame.SystemId} connected"));
+
+await connection.ConnectAsync();
+```
+
+### TCP Server Example
+
+```cs
+var listener = new System.Net.Sockets.TcpListener(
+    System.Net.IPAddress.Any, 5760);
+listener.Start();
+
+var client = await listener.AcceptTcpClientAsync();
+var transport = new TcpTransport(client);
+var connection = new MavLinkConnection(transport);
+
+connection.OnPacketReceived += frame =>
+    Console.WriteLine($"Received: {Metadata.Messages[frame.MessageId].Name}");
+
+await connection.ConnectAsync();
+```
+
+### API Reference
+
+#### MavLinkConnection
+
+| Member | Description |
+|--------|-------------|
+| `ConnectAsync(CancellationToken)` | Connects and starts receive loop, heartbeat, and reconnection |
+| `DisconnectAsync()` | Disconnects and stops all background tasks |
+| `SendAsync(Frame, CancellationToken)` | Sends a frame with auto SystemId/ComponentId/Sequence |
+| `SendCommandAsync(Frame, ...)` | Sends a command and waits for COMMAND_ACK |
+| `SendHeartbeatAsync(CancellationToken)` | Sends a single HEARTBEAT message |
+| `OnMessage(uint, Action<Frame>)` | Registers a handler for a specific message ID |
+| `OnMessage(string, Action<Frame>)` | Registers a handler for a message by name |
+| `OnCommandAck(Action<CommandResult>)` | Registers a handler for COMMAND_ACK |
+| `Connected` event | Fires when the transport connects |
+| `Disconnected` event | Fires when the transport disconnects |
+| `PacketReceived` event | Fires for every received frame |
+
+#### ConnectionOptions
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `SystemId` | 1 | MAVLink system ID for outgoing messages |
+| `ComponentId` | 1 | MAVLink component ID for outgoing messages |
+| `Context` | `MavLinkContext.Default` | Dialect context for parsing |
+| `Signing` | null | Optional MAVLink 2 signing configuration |
+| `AutoReconnect` | true | Whether to auto-reconnect on failure |
+| `ReconnectDelayMs` | 1000 | Delay between reconnection attempts |
+| `MaxReconnectAttempts` | 5 | Max consecutive reconnection attempts |
+| `HeartbeatIntervalMs` | 1000 | Heartbeat interval (0 = disabled) |
+| `HeartbeatType` | 0 | MAV_TYPE for heartbeats |
+| `HeartbeatAutopilot` | 0 | MAV_AUTOPILOT for heartbeats |
+| `HeartbeatSystemStatus` | 0 | MAV_STATE for heartbeats |
+
+#### ITransport
+
+| Method | Description |
+|--------|-------------|
+| `ConnectAsync(CancellationToken)` | Establishes the transport connection |
+| `DisconnectAsync(CancellationToken)` | Closes the transport connection |
+| `SendAsync(ReadOnlyMemory<byte>, CancellationToken)` | Sends data over the transport |
+| `ReceiveAsync(Memory<byte>, CancellationToken)` | Receives data from the transport |
+| `DisposeAsync()` | Asynchronously releases resources |
 
 ## MAVLink 2 Signing
 

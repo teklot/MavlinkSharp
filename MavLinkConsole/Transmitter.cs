@@ -1,44 +1,42 @@
 using MavLinkSharp;
+using MavLinkSharp.Connection;
 using MavLinkSharp.Protocols;
-using System.Net;
-using System.Net.Sockets;
 
 namespace MavLinkConsole;
 
 static class Transmitter
 {
     private static readonly Random random = new();
-    private static byte packetSequence = 0;
     private static int messageCount = 0;
 
-    public static void Run(UdpClient udpClient, IPEndPoint remoteEndPoint)
+    public static async Task RunAsync(MavLinkConnection connection, CancellationToken cancellationToken = default)
     {
         var messageIds = Metadata.Messages.Keys.ToList();
         if (!messageIds.Any())
         {
-            TerminalLayout.WriteTx("Tx: No MavLink messages found in common.xml. Exiting Tx thread.");
+            TerminalLayout.WriteTx("Tx: No MavLink messages found. Exiting Tx thread.");
             return;
         }
 
-        while (true)
+        while (!cancellationToken.IsCancellationRequested)
         {
             messageCount++;
 
             // Every 5th message, demonstrate CommandProtocol by sending a COMMAND_LONG
             if (messageCount % 5 == 0)
             {
-                SendCommandLong(udpClient, remoteEndPoint);
+                await SendCommandLongAsync(connection, cancellationToken);
             }
             else
             {
-                SendRandomMessage(udpClient, remoteEndPoint, messageIds);
+                await SendRandomMessageAsync(connection, messageIds, cancellationToken);
             }
 
-            Thread.Sleep(100); // Send message every 100ms
+            await Task.Delay(100, cancellationToken);
         }
     }
 
-    private static void SendCommandLong(UdpClient udpClient, IPEndPoint remoteEndPoint)
+    private static async Task SendCommandLongAsync(MavLinkConnection connection, CancellationToken ct)
     {
         var frame = CommandProtocol.CreateCommandLong(
             MavLinkContext.Default,
@@ -48,18 +46,15 @@ static class Transmitter
             targetComponent: 1,
             command: 180, // MAV_CMD_DO_CHANGE_SPEED
             parameters: [1f, 5f, 0f, 0f, 0f, 0f, 0f],
-            confirmation: 0,
-            sequence: packetSequence);
+            confirmation: 0);
 
-        byte[] packet = frame.ToBytes();
-        udpClient.Send(packet, packet.Length, remoteEndPoint);
+        await connection.SendAsync(frame, ct);
 
-        TerminalLayout.WriteTx($"Tx => Seq: {packetSequence:D3}, Cmd: DO_CHANGE_SPEED (180), " +
+        TerminalLayout.WriteTx($"Tx => Seq: {frame.PacketSequence:D3}, Cmd: DO_CHANGE_SPEED (180), " +
             $"params: [1f, 5f] (COMMAND_LONG via CommandProtocol)");
-        packetSequence++;
     }
 
-    private static void SendRandomMessage(UdpClient udpClient, IPEndPoint remoteEndPoint, List<uint> messageIds)
+    private static async Task SendRandomMessageAsync(MavLinkConnection connection, List<uint> messageIds, CancellationToken ct)
     {
         // Select a random message ID
         uint randomMessageId = messageIds[random.Next(messageIds.Count)];
@@ -77,24 +72,18 @@ static class Transmitter
                 SystemId = systemId,
                 ComponentId = componentId,
                 MessageId = randomMessageId,
-                Message = message,
-                PacketSequence = packetSequence
+                Message = message
             };
 
             frame.SetFields(fieldValues);
-
-            byte[] packet = frame.ToBytes();
-
-            udpClient.Send(packet, packet.Length, remoteEndPoint);
+            await connection.SendAsync(frame, ct);
 
             TerminalLayout.WriteTx($"Tx => " +
-                $"Seq: {packetSequence:D3}, " +
+                $"Seq: {frame.PacketSequence:D3}, " +
                 $"SysId: {systemId:X2}, " +
                 $"CompId: {componentId:X2}, " +
                 $"Id: {message.Id:X4}, " +
                 $"Name: {message.Name}");
-
-            packetSequence++; // Increment sequence number
         }
         else
         {
