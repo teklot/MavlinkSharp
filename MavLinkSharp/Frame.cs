@@ -3,15 +3,24 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Text;
 
 namespace MavLinkSharp
 {
     /// <summary>
     /// Represents a single, parsed MAVLink message frame.
     /// This class contains the raw data from the wire and the decoded payload fields.
+    /// Implements <see cref="IDisposable"/> to return pooled byte arrays.
     /// </summary>
-    public class Frame
+    public class Frame : IDisposable
     {
+        private const int PayloadBufferSize = 255;
+        private const int SignatureBufferSize = 13;
+
+        private byte[] _payload;
+        private byte[] _signature;
+        private bool _disposed;
+
         #region Common Properties
         /// <summary>
         /// Protocol start marker.
@@ -49,11 +58,11 @@ namespace MavLinkSharp
         /// <summary>
         /// The message metadata associated with this frame.
         /// </summary>
-        public Message Message { get; set; }
+        public Message? Message { get; set; }
         /// <summary>
         /// The raw message payload.
         /// </summary>
-        public byte[] Payload { get; } = new byte[255];
+        public byte[] Payload => _payload;
         /// <summary>
         /// Checksum of the frame.
         /// </summary>
@@ -61,7 +70,7 @@ namespace MavLinkSharp
         /// <summary>
         /// MAVLink 2 signature for signing packets. If empty, the frame is not signed.
         /// </summary>
-        public byte[] Signature { get; internal set; } = new byte[13];
+        public byte[] Signature => _signature;
 
         /// <summary>
         /// The dialect context to use for parsing and message metadata.
@@ -72,7 +81,7 @@ namespace MavLinkSharp
         /// <summary>
         /// Gets the signing configuration for this frame, if available.
         /// </summary>
-        public MavLinkSigning Signing { get; set; }
+        public MavLinkSigning? Signing { get; set; }
 
         /// <summary>
         /// Indicates whether the frame includes a signature.
@@ -109,7 +118,7 @@ namespace MavLinkSharp
         /// </summary>
         public DateTime Timestamp { get; private set; }
 
-        private Dictionary<string, object> _fields;
+        private Dictionary<string, object>? _fields;
         /// <summary>
         /// A dictionary holding the decoded payload fields as key-value pairs (field name and value).
         /// The fields are lazily decoded when this property is first accessed.
@@ -132,7 +141,7 @@ namespace MavLinkSharp
                         foreach (var f in Message.OrderedFields)
                         {
                             var fieldSpan = span.Slice(f.Offset, f.Length);
-                            _fields[f.Name] = f.GetValue(ref fieldSpan);
+                            _fields[f.Name!] = f.GetValue(ref fieldSpan);
                         }
                     }
                 }
@@ -150,7 +159,7 @@ namespace MavLinkSharp
         private ReadOnlySpan<byte> GetFieldSpan(string name, out Field field)
         {
             if (Message == null) throw new InvalidOperationException("Message metadata is not available.");
-            if (!Message.FieldsByName.TryGetValue(name, out field))
+            if (!Message.FieldsByName.TryGetValue(name, out field!))
                 throw new ArgumentException($"Field '{name}' not found in message '{Message.Name}'.");
 
             return Payload.AsSpan(field.Offset, field.Length);
@@ -278,11 +287,15 @@ namespace MavLinkSharp
         #endregion
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="Frame"/> class and sets the creation timestamp.
+        /// Initializes a new instance of the <see cref="Frame"/> class and allocates pooled byte arrays.
         /// </summary>
         /// <param name="messageName">For internal use. (Currently not used and can be ignored).</param>
-        public Frame(string messageName = null)
+        public Frame(string? messageName = null)
         {
+            _payload = ArrayPool<byte>.Shared.Rent(PayloadBufferSize);
+            _signature = ArrayPool<byte>.Shared.Rent(SignatureBufferSize);
+            _payload.AsSpan(0, PayloadBufferSize).Clear();
+            _signature.AsSpan(0, SignatureBufferSize).Clear();
             Timestamp = DateTime.UtcNow;
         }
 
@@ -298,7 +311,8 @@ namespace MavLinkSharp
             MessageId = 0;
             Message = null;
             Checksum = 0;
-            Signature = new byte[13];
+            _payload.AsSpan(0, PayloadBufferSize).Clear();
+            _signature.AsSpan(0, SignatureBufferSize).Clear();
             Timestamp = DateTime.UtcNow;
             _fields = null;
             ErrorReason = ErrorReason.None;
@@ -315,7 +329,7 @@ namespace MavLinkSharp
 
             foreach (var field in Message.OrderedFields)
             {
-                if (values.TryGetValue(field.Name, out var value))
+                if (values.TryGetValue(field.Name!, out var value))
                 {
                     field.SetValue(Payload.AsSpan(field.Offset), value);
                 }
@@ -341,7 +355,8 @@ namespace MavLinkSharp
                 signing.LinkId = linkId.Value;
 
             // Mark that we want signing (actual flag is set during serialization)
-            Signature = new byte[MavLinkSigning.SignatureLength];
+            _signature = ArrayPool<byte>.Shared.Rent(MavLinkSigning.SignatureLength);
+            _signature.AsSpan(0, MavLinkSigning.SignatureLength).Clear();
         }
 
         /// <summary>
@@ -724,7 +739,6 @@ namespace MavLinkSharp
 
                 if (packet.Length >= signatureOffset + Protocol.V2.SignatureLength)
                 {
-                    this.Signature = new byte[Protocol.V2.SignatureLength];
                     packet.Slice(signatureOffset, Protocol.V2.SignatureLength).CopyTo(this.Signature);
 
                     // Validate signature if signing is configured
@@ -841,6 +855,44 @@ namespace MavLinkSharp
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Returns a human-readable summary of the frame for debugging.
+        /// </summary>
+        public override string ToString()
+        {
+            var sb = new StringBuilder();
+            sb.Append(StartMarker == Protocol.V2.StartMarker ? "MAVLink2" : StartMarker == Protocol.V1.StartMarker ? "MAVLink1" : "Unknown");
+            sb.Append($" Msg={Message?.Name ?? MessageId.ToString()}");
+            sb.Append($" Sys={SystemId} Comp={ComponentId} Seq={PacketSequence}");
+            sb.Append($" Len={PayloadLength}");
+            if (ErrorReason != ErrorReason.None)
+                sb.Append($" Error={ErrorReason}");
+            if (HasSignature)
+                sb.Append(" Signed");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Returns pooled byte arrays to the shared pool.
+        /// </summary>
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                if (_payload != null)
+                {
+                    ArrayPool<byte>.Shared.Return(_payload, clearArray: true);
+                    _payload = Array.Empty<byte>();
+                }
+                if (_signature != null)
+                {
+                    ArrayPool<byte>.Shared.Return(_signature, clearArray: true);
+                    _signature = Array.Empty<byte>();
+                }
+            }
         }
     }
 }

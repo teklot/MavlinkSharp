@@ -24,25 +24,25 @@ namespace MavLinkSharp
         /// Human readable form for the message. It is used for naming helper functions in generated libraries, but is not sent over the wire.
         /// </summary>
         [XmlAttribute(AttributeName = "name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
 
         /// <summary>
         /// A tag indicating that the message is a "work in progress" (optional).
         /// </summary>
         [XmlElement(ElementName = "wip")]
-        public Wip Wip { get; set; }
+        public Wip? Wip { get; set; }
 
         /// <summary>
         /// A tag indicating that the message is deprecated (optional).
         /// </summary>
         [XmlElement(ElementName = "deprecated")]
-        public Deprecated Deprecated { get; set; }
+        public Deprecated? Deprecated { get; set; }
 
         /// <summary>
         /// Human readable description of message, shown in user interfaces and in code comments. This should contain all information (and hyperlinks) to fully understand the message.
         /// </summary>
         [XmlElement(ElementName = "description")]
-        public string Description { get; set; }
+        public string Description { get; set; } = null!;
 
         /// <summary>
         /// Encodes one field of the message. The field value is its name/text string used in GUI documentation (but not sent over the wire). Every message must have at least one field.
@@ -55,7 +55,7 @@ namespace MavLinkSharp
         /// </summary>
         /// <remarks><![CDATA[The tag should be used for MAVLink 1 messages only (id < 256) that have been extended in MAVLink 2.]]></remarks>
         [XmlElement(ElementName = "extensions")]
-        public Extensions Extensions { get; set; }
+        public Extensions? Extensions { get; set; }
 
         #region Helpers
         /// <summary>
@@ -84,13 +84,13 @@ namespace MavLinkSharp
         /// The message fields ordered according to the MAVLink spec.
         /// </summary>
         [XmlIgnore]
-        public List<Field> OrderedFields { get; private set; }
+        public List<Field> OrderedFields { get; private set; } = default!;
 
         /// <summary>
         /// A dictionary for fast lookup of fields by name.
         /// </summary>
         [XmlIgnore]
-        public Dictionary<string, Field> FieldsByName { get; private set; }
+        public Dictionary<string, Field> FieldsByName { get; private set; } = default!;
 
         /// <summary>
         /// Whether the message to be parsed.
@@ -147,7 +147,7 @@ namespace MavLinkSharp
 
             OrderedFields.AddRange(extensions);
 
-            FieldsByName = OrderedFields.ToDictionary(x => x.Name);
+            FieldsByName = OrderedFields.ToDictionary(x => x.Name!);
         }
 
         internal void SetCrcExtra()

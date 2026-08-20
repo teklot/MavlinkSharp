@@ -12,12 +12,14 @@ MavLinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink
  - **Runtime Dialect Parsing:** Consumes standard MAVLink XML dialect files at runtime. **No code generation required.**
  - **Extensible:** Supports custom dialects with no extra effort. Just provide the XML file.
  - **High Performance:** Designed for speed and low allocation to handle high-throughput MAVLink streams.
- - **Streaming Ready:** Built-in support for `System.IO.Pipelines` (`PipeReader`) to handle fragmented data streams efficiently.
+ - **Streaming Ready:** Built-in support for `System.IO.Pipelines` (`PipeReader`) and `ReadOnlySequence<byte>` for efficient fragmented data stream parsing.
  - **Cross-Platform:** Can be used on any platform that supports .NET Standard 2.0 (Windows, Linux, macOS, etc.).
  - **Minimal Dependencies:** Only requires `System.Memory` and `System.IO.Pipelines`.
  - **MAVLink 2 Signing:** Full support for MAVLink 2 packet signing using HMAC-SHA256 with timestamp validation.
  - **Command Protocol:** High-level API for sending commands (`COMMAND_LONG`/`COMMAND_INT`) and handling acknowledgements (`COMMAND_ACK`) with built-in timeout, retry, and progress support.
  - **Connection Manager:** Event-driven `MavLinkConnection` wrapping UDP, TCP, or Serial transports with auto-reconnect, auto-heartbeat, and automatic sequence numbering.
+ - **IDisposable Frame:** `Frame` implements `IDisposable` and uses `ArrayPool<byte>.Shared` for zero-allocation buffer management. Call `Dispose()` or use `using` to return buffers to the pool.
+ - **Frame.ToString():** Human-readable summary of parsed frames for debugging (e.g., `MAVLink2 Msg=HEARTBEAT Sys=1 Comp=1`).
 
 ## Supported Frameworks
 
@@ -516,7 +518,7 @@ public class MavLinkSigning
 public class Frame
 {
     public MavLinkSigning? Signing { get; set; }
-    public byte[]? Signature { get; set; }
+    public byte[] Signature { get; }
     public bool HasSignature { get; }
 
     public void EnableSigning(MavLinkSigning signing, byte? linkId = null);
@@ -538,7 +540,8 @@ MavLink.Initialize(DialectType.Common);
 MavLink.IncludeMessages(1, 30);
 
 // 3. Create a Frame object once and reuse it for high performance (zero allocation).
-var frame = new Frame();
+//    Frame uses ArrayPool internally — dispose it when done to return buffers to the pool.
+using var frame = new Frame();
 
 // Example: Listen for MAVLink packets on a local UDP port.
 var endpoint = new IPEndPoint(IPAddress.Loopback, 14550);
@@ -659,6 +662,17 @@ public async Task ProcessMavLinkStreamAsync(PipeReader reader)
 
         if (result.IsCompleted) break;
     }
+}
+```
+
+The `ReadOnlySequence<byte>` overload of `TryParse` also works with any multi-segment buffer, making it useful outside of `PipeReader` scenarios:
+
+```cs
+var frame = new Frame();
+var sequence = new ReadOnlySequence<byte>(myArray);
+if (frame.TryParse(sequence, out var consumed, out var examined))
+{
+    Console.WriteLine(frame); // Uses Frame.ToString()
 }
 ```
 

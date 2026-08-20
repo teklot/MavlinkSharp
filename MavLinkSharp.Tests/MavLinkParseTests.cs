@@ -361,7 +361,7 @@ namespace MavLinkSharp.Tests
             {
                 if (fieldValues.TryGetValue(field.Name, out var value))
                 {
-                    if (field.DataType.IsArray)
+                    if (field.DataType!.IsArray)
                     {
                         var array = (Array)value;
                         var elementType = field.DataType.GetElementType();

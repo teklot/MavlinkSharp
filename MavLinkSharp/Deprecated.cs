@@ -12,24 +12,24 @@ namespace MavLinkSharp
         /// Year/month when deprecation started. Format: YYYY-MM.
         /// </summary>
         [XmlAttribute(AttributeName = "since")]
-        public string Since { get; set; }
+        public string Since { get; set; } = null!;
 
         /// <summary>
         /// The name of entity that supersedes this item.
         /// </summary>
         [XmlAttribute(AttributeName = "replaced_by")]
-        public string ReplacedBy { get; set; }
+        public string ReplacedBy { get; set; } = null!;
 
         /// <summary>
         /// Deprecation description string (tag body).
         /// </summary>
         [XmlElement(ElementName = "description")]
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         /// <summary>
         /// Deprecated description string (tag body).
         /// </summary>
         [XmlText]
-        public string TagBody { get; set; }
+        public string? TagBody { get; set; }
     }
 }

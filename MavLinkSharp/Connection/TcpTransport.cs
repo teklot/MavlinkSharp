@@ -13,9 +13,9 @@ namespace MavLinkSharp.Connection
     /// </summary>
     public class TcpTransport : ITransport
     {
-        private TcpClient _tcpClient;
-        private NetworkStream _stream;
-        private TcpListener _listener;
+        private TcpClient? _tcpClient;
+        private NetworkStream? _stream;
+        private TcpListener? _listener;
         private bool _connected;
         private readonly object _lock = new object();
 
@@ -79,12 +79,12 @@ namespace MavLinkSharp.Connection
         /// <summary>
         /// Gets the underlying <see cref="TcpClient"/> instance.
         /// </summary>
-        public TcpClient Client => _tcpClient;
+        public TcpClient? Client => _tcpClient;
 
         /// <summary>
         /// Gets the underlying <see cref="NetworkStream"/> for direct access.
         /// </summary>
-        public NetworkStream Stream => _stream;
+        public NetworkStream? Stream => _stream;
 
         /// <inheritdoc/>
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
@@ -125,7 +125,7 @@ namespace MavLinkSharp.Connection
             byte[] buffer;
             if (MemoryMarshal.TryGetArray(data, out var arraySegment))
             {
-                buffer = arraySegment.Array;
+                buffer = arraySegment.Array!;
             }
             else
             {

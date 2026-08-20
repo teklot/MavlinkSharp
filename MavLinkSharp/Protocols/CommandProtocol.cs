@@ -203,7 +203,7 @@ namespace MavLinkSharp.Protocols
         /// <param name="frame">The parsed frame to inspect.</param>
         /// <param name="result">When successful, the parsed command result.</param>
         /// <returns><c>true</c> if the frame is a valid COMMAND_ACK; otherwise <c>false</c>.</returns>
-        public static bool TryParseCommandAck(Frame frame, out CommandResult result)
+        public static bool TryParseCommandAck(Frame frame, out CommandResult? result)
         {
             result = null;
             if (frame.MessageId != CommandAckId || frame.Fields == null)
@@ -270,7 +270,7 @@ namespace MavLinkSharp.Protocols
             Func<CancellationToken, Task<Frame>> receiveFrameAsync,
             int timeoutMs = 5000,
             int retries = 0,
-            IProgress<CommandResult> progress = null,
+            IProgress<CommandResult>? progress = null,
             CancellationToken cancellationToken = default)
         {
             ushort expectedCommand = (ushort)commandFrame.Fields["command"];
@@ -301,7 +301,7 @@ namespace MavLinkSharp.Protocols
 
                         if (TryParseCommandAck(response, out var result))
                         {
-                            if (result.Command != expectedCommand)
+                            if (result!.Command != expectedCommand)
                                 continue;
 
                             progress?.Report(result);

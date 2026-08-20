@@ -22,12 +22,12 @@ namespace MavLinkSharp.Connection
         /// The MAVLink dialect context to use for parsing and constructing messages.
         /// Defaults to <see cref="MavLinkContext.Default"/>.
         /// </summary>
-        public MavLinkContext Context { get; set; }
+        public MavLinkContext? Context { get; set; }
 
         /// <summary>
         /// Optional MAVLink 2 signing configuration for outgoing frames.
         /// </summary>
-        public MavLinkSigning Signing { get; set; }
+        public MavLinkSigning? Signing { get; set; }
 
         /// <summary>
         /// Delay in milliseconds between reconnection attempts. Defaults to 1000.

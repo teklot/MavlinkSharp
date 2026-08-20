@@ -17,19 +17,19 @@ namespace MavLinkSharp
         /// Display name to represent the parameter in a GCS or other UI. All words in label should be capitalized.
         /// </summary>
         [XmlAttribute(AttributeName = "label")]
-        public string Label { get; set; }
+        public string? Label { get; set; }
 
         /// <summary>
         /// SI units for the value.
         /// </summary>
         [XmlAttribute(AttributeName = "units")]
-        public string Units { get; set; }
+        public string? Units { get; set; }
 
         /// <summary>
         /// Possible value from enumeration for the parameter (if applicable).
         /// </summary>
         [XmlAttribute(AttributeName = "enum")]
-        public string Enum { get; set; }
+        public string? Enum { get; set; }
 
         /// <summary>
         /// Decimal places to use if the parameter value is displayed.
@@ -65,12 +65,12 @@ namespace MavLinkSharp
         /// Default value for the parameter (primarily used for reserved parameters where the value is 0 or NaN).
         /// </summary>
         [XmlAttribute(AttributeName = "default")]
-        public string Default  { get; set; }
+        public string? Default  { get; set; }
 
         /// <summary>
         /// Parameter description string (tag body).
         /// </summary>
         [XmlText]
-        public string TagBody { get; set; }
+        public string? TagBody { get; set; }
     }
 }

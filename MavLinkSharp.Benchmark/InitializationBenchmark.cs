@@ -25,7 +25,7 @@ namespace MavLinkSharp.Benchmark
         [Benchmark]
         public void InitializeMavLink()
         {
-            MavLink.Initialize(_commonXmlPath);
+            MavLink.Initialize(_commonXmlPath!);
         }
     }
 }

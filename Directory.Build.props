@@ -1,6 +1,15 @@
 <Project>
   <PropertyGroup>
-    <Version>1.9.0</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
+    <Version>1.10.0</Version>
+    <Authors>TekLot</Authors>
+    <Copyright>Copyright © 2026 TekLot</Copyright>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <GeneratePackageOnBuild Condition="'$(IsPackable)' != 'false'">true</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(IsPackable)' != 'false'">

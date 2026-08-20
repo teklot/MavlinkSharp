@@ -15,6 +15,7 @@ namespace MavLinkSharp
     public class MavLinkContext
     {
         private readonly Dictionary<string, MavLink> _dialects = new Dictionary<string, MavLink>();
+        private readonly object _initLock = new object();
         
         /// <summary>
         /// The message and enum metadata for this context.
@@ -81,10 +82,15 @@ namespace MavLinkSharp
         /// <param name="messageIds">Optional. A list of message IDs to include for parsing. If empty, all messages from the dialect are included.</param>
         public void Initialize(string dialectPath = "common.xml", params uint[] messageIds)
         {
-            var dialects = Deserialize(dialectPath);
-            Metadata.Initialize(dialects);
-            IncludeMessages(messageIds);
-            IsInitialized = true;
+            lock (_initLock)
+            {
+                if (IsInitialized) return;
+
+                var dialects = Deserialize(dialectPath);
+                Metadata.Initialize(dialects);
+                IncludeMessages(messageIds);
+                IsInitialized = true;
+            }
         }
 
         private Dictionary<string, MavLink> Deserialize(string dialectPath)
@@ -172,7 +178,7 @@ namespace MavLinkSharp
 
         private Enum ReadEnum(XmlReader reader)
         {
-            var @enum = new Enum { Name = reader.GetAttribute("name") };
+            var @enum = new Enum { Name = reader.GetAttribute("name")! };
             var bitmask = reader.GetAttribute("bitmask");
             if (bool.TryParse(bitmask, out var isBitmask)) @enum.Bitmask = isBitmask;
 
@@ -198,7 +204,7 @@ namespace MavLinkSharp
 
         private Entry ReadEntry(XmlReader reader)
         {
-            var entry = new Entry { Name = reader.GetAttribute("name") };
+            var entry = new Entry { Name = reader.GetAttribute("name")! };
             var valStr = reader.GetAttribute("value");
             if (long.TryParse(valStr, out var val)) entry.Value = val;
 
@@ -217,7 +223,7 @@ namespace MavLinkSharp
 
         private Message ReadMessage(XmlReader reader)
         {
-            var msg = new Message { Name = reader.GetAttribute("name") };
+            var msg = new Message { Name = reader.GetAttribute("name")! };
             var idStr = reader.GetAttribute("id");
             if (uint.TryParse(idStr, out var id)) msg.Id = id;
 
@@ -251,8 +257,8 @@ namespace MavLinkSharp
         {
             var field = new Field
             {
-                Name = reader.GetAttribute("name"),
-                Type = reader.GetAttribute("type"),
+                Name = reader.GetAttribute("name")!,
+                Type = reader.GetAttribute("type")!,
                 Enum = reader.GetAttribute("enum"),
                 Units = reader.GetAttribute("units"),
                 Display = reader.GetAttribute("display"),

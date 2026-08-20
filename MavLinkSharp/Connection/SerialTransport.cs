@@ -98,7 +98,7 @@ namespace MavLinkSharp.Connection
             byte[] buffer;
             if (MemoryMarshal.TryGetArray(data, out var arraySegment))
             {
-                buffer = arraySegment.Array;
+                buffer = arraySegment.Array!;
             }
             else
             {

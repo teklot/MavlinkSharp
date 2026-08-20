@@ -68,9 +68,9 @@ namespace MavLinkSharp.Tests
             var success = CommandProtocol.TryParseCommandAck(frame, out var result);
 
             Assert.True(success);
-            Assert.Equal((ushort)76, result.Command);
-            Assert.Equal(MavResult.Accepted, result.Result);
-            Assert.True(result.Success);
+            Assert.Equal((ushort)76, result!.Command);
+            Assert.Equal(MavResult.Accepted, result!.Result);
+            Assert.True(result!.Success);
         }
 
         [Fact]
@@ -81,8 +81,8 @@ namespace MavLinkSharp.Tests
             var success = CommandProtocol.TryParseCommandAck(frame, out var result);
 
             Assert.True(success);
-            Assert.Equal(MavResult.Failed, result.Result);
-            Assert.False(result.Success);
+            Assert.Equal(MavResult.Failed, result!.Result);
+            Assert.False(result!.Success);
         }
 
         [Fact]
@@ -93,8 +93,8 @@ namespace MavLinkSharp.Tests
             var success = CommandProtocol.TryParseCommandAck(frame, out var result);
 
             Assert.True(success);
-            Assert.Equal(MavResult.InProgress, result.Result);
-            Assert.Equal((byte)50, result.Progress);
+            Assert.Equal(MavResult.InProgress, result!.Result);
+            Assert.Equal((byte)50, result!.Progress);
         }
 
         [Fact]

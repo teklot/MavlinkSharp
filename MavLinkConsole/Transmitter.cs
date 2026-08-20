@@ -103,7 +103,7 @@ static class Transmitter
 
     static object GenerateRandomValue(Field field, Random random)
     {
-        if (field.DataType.IsArray)
+        if (field.DataType!.IsArray)
         {
             // Handle char arrays (strings)
             if (field.ElementType == typeof(char))

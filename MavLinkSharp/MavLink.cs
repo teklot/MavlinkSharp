@@ -21,13 +21,13 @@ namespace MavLinkSharp
         /// The minor version number for the release, as included in the HEARTBEAT mavlink_version field.
         /// </summary>
         [XmlElement(ElementName = "version")]
-        public string Version { get; set; }
+        public string? Version { get; set; }
 
         /// <summary>
         /// Unique number for your dialect.
         /// </summary>
         [XmlElement(ElementName = "dialect")]
-        public string Dialect { get; set; }
+        public string? Dialect { get; set; }
 
         /// <summary>
         /// Dialect-specific enumerations, used to define named values that may be used as options in

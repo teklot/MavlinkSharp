@@ -33,13 +33,13 @@ namespace MavLinkSharp.Connection
         /// <summary>
         /// Gets the exception that caused the disconnection, if any.
         /// </summary>
-        public Exception Exception { get; }
+        public Exception? Exception { get; }
 
         /// <summary>
         /// Creates a new instance of <see cref="DisconnectedEventArgs"/>.
         /// </summary>
         /// <param name="exception">The exception that caused the disconnection, or null.</param>
-        public DisconnectedEventArgs(Exception exception = null)
+        public DisconnectedEventArgs(Exception? exception = null)
         {
             HasError = exception != null;
             Exception = exception;
@@ -66,22 +66,22 @@ namespace MavLinkSharp.Connection
         private readonly List<Action<Frame>> _packetReceivedHandlers;
         private readonly object _sequenceLock = new object();
         private byte _packetSequence;
-        private CancellationTokenSource _receiveCts;
-        private Task _receiveTask;
-        private Task _heartbeatTask;
-        private Task _reconnectTask;
+        private CancellationTokenSource? _receiveCts;
+        private Task? _receiveTask;
+        private Task? _heartbeatTask;
+        private Task? _reconnectTask;
         private bool _disposed;
         private bool _userDisconnected;
 
         /// <summary>
         /// Occurs when the connection is established.
         /// </summary>
-        public event EventHandler<ConnectedEventArgs> Connected;
+        public event EventHandler<ConnectedEventArgs>? Connected;
 
         /// <summary>
         /// Occurs when the connection is lost.
         /// </summary>
-        public event EventHandler<DisconnectedEventArgs> Disconnected;
+        public event EventHandler<DisconnectedEventArgs>? Disconnected;
 
         /// <summary>
         /// Occurs when any MAVLink packet is received.
@@ -97,7 +97,7 @@ namespace MavLinkSharp.Connection
         /// </summary>
         /// <param name="transport">The transport layer to use for communication.</param>
         /// <param name="options">Optional connection configuration.</param>
-        public MavLinkConnection(ITransport transport, ConnectionOptions options = null)
+        public MavLinkConnection(ITransport transport, ConnectionOptions? options = null)
         {
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
             _options = options ?? new ConnectionOptions();
@@ -252,7 +252,7 @@ namespace MavLinkSharp.Connection
             Frame commandFrame,
             int timeoutMs = 5000,
             int retries = 0,
-            IProgress<CommandResult> progress = null,
+            IProgress<CommandResult>? progress = null,
             CancellationToken cancellationToken = default)
         {
             return await CommandProtocol.SendCommandAsync(
@@ -262,7 +262,7 @@ namespace MavLinkSharp.Connection
                 {
                     using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     linkedCts.CancelAfter(timeoutMs);
-                    return await ReceiveFrameAsync(linkedCts.Token).ConfigureAwait(false);
+                    return (await ReceiveFrameAsync(linkedCts.Token).ConfigureAwait(false))!;
                 },
                 timeoutMs,
                 retries,
@@ -437,7 +437,7 @@ namespace MavLinkSharp.Connection
                     {
                         try
                         {
-                            handler(cmdResult);
+                            handler(cmdResult!);
                         }
                         catch
                         {
@@ -557,7 +557,7 @@ namespace MavLinkSharp.Connection
             _receiveCts = null;
         }
 
-        private async Task<Frame> ReceiveFrameAsync(CancellationToken cancellationToken)
+        private async Task<Frame?> ReceiveFrameAsync(CancellationToken cancellationToken)
         {
             var pipe = new Pipe();
 
@@ -569,7 +569,7 @@ namespace MavLinkSharp.Connection
             return frame;
         }
 
-        private async Task<Frame> ReadOneFrameAsync(PipeReader reader, CancellationToken cancellationToken)
+        private async Task<Frame?> ReadOneFrameAsync(PipeReader reader, CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested)
             {

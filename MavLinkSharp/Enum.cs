@@ -14,7 +14,7 @@ namespace MavLinkSharp
         /// The name of the enumeration (mandatory). This is a string of capitalized, underscore-separated words.
         /// </summary>
         [XmlAttribute(AttributeName = "name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
 
         /// <summary>
         /// Indicates the value is a flag.
@@ -27,7 +27,7 @@ namespace MavLinkSharp
         /// A string describing the purpose of the enumeration (optional).
         /// </summary>
         [XmlElement(ElementName = "description")]
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         /// <summary>
         /// zero or more entries (optional).
@@ -39,6 +39,6 @@ namespace MavLinkSharp
         /// A tag indicating that the enumeration is deprecated (optional).
         /// </summary>
         [XmlElement(ElementName = "deprecated")]
-        public Deprecated Deprecated { get; set; }
+        public Deprecated? Deprecated { get; set; }
     }
 }

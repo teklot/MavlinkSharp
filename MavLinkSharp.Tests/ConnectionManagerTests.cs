@@ -70,6 +70,7 @@ namespace MavLinkSharp.Tests
         {
             _context = new MavLinkContext();
             _context.Initialize(DialectType.Common);
+            MavLink.Initialize("common.xml");
         }
 
         [Fact]

@@ -15,43 +15,43 @@ namespace MavLinkSharp
         /// </summary>
         /// <remarks>Fields can be signed/unsigned integers of size 8, 16, 32, 64 bits ({u)int8_t, (u)int16_t, (u)int32_t, (u)int64_t), single/double precision IEEE754 floating point numbers. They can also be arrays of the other types - e.g. uint16_t[10]</remarks>
         [XmlAttribute(AttributeName = "type")]
-        public string Type { get; set; }
+        public string Type { get; set; } = null!;
 
         /// <summary>
         /// Name of the field (used in code).
         /// </summary>
         [XmlAttribute(AttributeName = "name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
 
         /// <summary>
         /// Name of an enumeration defining possible values of the field (e.g. MAV_BATTERY_CHARGE_STATE).
         /// </summary>
         [XmlAttribute(AttributeName = "enum")]
-        public string Enum { get; set; }
+        public string? Enum { get; set; }
 
         /// <summary>
         /// The units for message fields that take numeric values (not enumerations). These are defined in the schema (search on name="SI_Unit")
         /// </summary>
         [XmlAttribute(AttributeName = "units")]
-        public string Units { get; set; }
+        public string? Units { get; set; }
 
         /// <summary>
         /// This should be set as display="bitmask" for bitmask fields (hint to ground station that enumeration values must be displayed as checkboxes).
         /// </summary>
         [XmlAttribute(AttributeName = "display")]
-        public string Display { get; set; }
+        public string? Display { get; set; }
 
         /// <summary>
         /// The format string used for displaying the field value (e.g., in a UI).
         /// </summary>
         [XmlAttribute(AttributeName = "print_format")]
-        public string PrintFormat { get; set; }
+        public string? PrintFormat { get; set; }
 
         /// <summary>
         /// The default value for the field.
         /// </summary>
         [XmlAttribute(AttributeName = "default")]
-        public string Default { get; set; }
+        public string? Default { get; set; }
 
         /// <summary>
         /// If true, this indicates that the message contains the information for a particular sensor or battery (e.g. Battery 1, Battery 2, etc.) and that this field indicates which sensor. Default is false.
@@ -64,7 +64,7 @@ namespace MavLinkSharp
         /// </summary>
         /// <remarks>Where possible the value that indicates the field is invalid should be selected to outside the expected/valid range of the field (0 is preferred if it is not an acceptable value for the field). For integers we usually select the largest possible value (i.e. UINT16_MAX, INT16_MAX, UINT8_MAX, UINT8_MAX). For floats we usually select invalid="NaN".</remarks>
         [XmlAttribute(AttributeName = "invalid")]
-        public string Invalid { get; set; }
+        public string? Invalid { get; set; }
 
         /// <summary>
         /// Used to indicate that the field applies to MAVLink 2 only.
@@ -78,14 +78,14 @@ namespace MavLinkSharp
         /// Field description string (tag body).
         /// </summary>
         [XmlText]
-        public string TagBody { get; set; }
+        public string? TagBody { get; set; }
 
         #region Helpers
         /// <summary>
         /// Standard CSharp data type based on the Type attribute.
         /// </summary>
         [XmlIgnore]
-        public Type DataType { get; private set; }
+        public Type? DataType { get; private set; }
 
         /// <summary>
         /// Field position in the payload based on the Type attribute.
@@ -115,7 +115,7 @@ namespace MavLinkSharp
         /// Element data type if referred by an array.
         /// </summary>
         [XmlIgnore]
-        public Type ElementType => DataType.IsArray ? DataType.GetElementType() : DataType;
+        public Type ElementType => DataType!.IsArray ? DataType!.GetElementType()! : DataType!;
 
         /// <summary>
         /// Sets the field data type based on the Type attribute.
@@ -123,7 +123,7 @@ namespace MavLinkSharp
         /// <exception cref="Exception"></exception>
         public void SetDataType()
         {
-            var array = Type.Contains("[") && Type.Contains("]");
+            var array = Type!.Contains("[") && Type.Contains("]");
 
             if (Type.StartsWith("char"))
             {
@@ -184,9 +184,9 @@ namespace MavLinkSharp
         /// types - e.g. uint16_t[10].</remarks>
         internal void SetLength()
         {
-            if (DataType.IsArray)
+            if (DataType!.IsArray)
             {
-                var startIndex = Type.IndexOf('[');
+                var startIndex = Type!.IndexOf('[');
                 var endIndex = Type.LastIndexOf(']');
 
                 if (startIndex == -1 || endIndex == -1 || endIndex <= startIndex)
@@ -216,7 +216,7 @@ namespace MavLinkSharp
         /// </summary>
         internal void SetOrdinal()
         {
-            var type = DataType.IsArray ? DataType.GetElementType() : DataType;
+            var type = DataType!.IsArray ? DataType!.GetElementType()! : DataType;
 
             Ordinal = Marshal.SizeOf(type);
         }
@@ -228,7 +228,7 @@ namespace MavLinkSharp
         /// <returns>The deserialized value of the field, or an array of values if the field is an array type.</returns>
         internal object GetValue(ref ReadOnlySpan<byte> span)
         {
-            if (DataType.IsArray)
+            if (DataType!.IsArray)
             {
                 var arraySpan = span.Slice(0, Length);
                 span = span.Slice(Length);
@@ -273,7 +273,7 @@ namespace MavLinkSharp
         /// <param name="value">The value to set (can be a numeric type or an array of numeric types/chars).</param>
         public void SetValue(Span<byte> span, object value)
         {
-            if (DataType.IsArray)
+            if (DataType!.IsArray)
             {
                 var array = (Array)value;
                 var arraySpan = span.Slice(0, Length);
@@ -313,7 +313,7 @@ namespace MavLinkSharp
                 {
                     var elementValue = i < array.Length ? array.GetValue(i) : 0;
                     var elementSpan = arraySpan.Slice(i * Marshal.SizeOf(ElementType));
-                    WriteValue(elementSpan, ElementType, elementValue);
+                    WriteValue(elementSpan, ElementType!, elementValue!);
                 }
                 return;
             }

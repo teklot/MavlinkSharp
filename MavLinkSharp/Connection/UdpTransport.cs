@@ -14,7 +14,7 @@ namespace MavLinkSharp.Connection
     public class UdpTransport : ITransport
     {
         private readonly UdpClient _udpClient;
-        private IPEndPoint _remoteEndPoint;
+        private IPEndPoint? _remoteEndPoint;
         private bool _connected;
         private readonly object _lock = new object();
 
@@ -58,7 +58,7 @@ namespace MavLinkSharp.Connection
         /// </summary>
         /// <param name="udpClient">The pre-configured UDP client.</param>
         /// <param name="remoteEndPoint">Optional remote endpoint for sending.</param>
-        public UdpTransport(UdpClient udpClient, IPEndPoint remoteEndPoint = null)
+        public UdpTransport(UdpClient udpClient, IPEndPoint? remoteEndPoint = null)
         {
             _udpClient = udpClient ?? throw new ArgumentNullException(nameof(udpClient));
             _remoteEndPoint = remoteEndPoint;
@@ -113,7 +113,7 @@ namespace MavLinkSharp.Connection
             byte[] buffer;
             if (MemoryMarshal.TryGetArray(data, out var arraySegment))
             {
-                buffer = arraySegment.Array;
+                buffer = arraySegment.Array!;
             }
             else
             {
