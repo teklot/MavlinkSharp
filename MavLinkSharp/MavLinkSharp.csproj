@@ -24,10 +24,7 @@
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<PackageReleaseNotes>
-			- Enabled nullable reference types across the library
-			- Frame now implements IDisposable with ArrayPool-backed Payload and Signature buffers
-			- Frame.Reset() zeroes pooled arrays instead of re-allocating
-			- Added Frame.ToString() for debugging
+			- Added Mission Protocol support for uploading, downloading, and clearing flight plans with built-in timeout and retry.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

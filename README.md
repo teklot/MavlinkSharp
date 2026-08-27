@@ -1,4 +1,4 @@
-﻿# MavLinkSharp — .NET MAVLink Library: Parse & Send Drone Telemetry, UAV Messages & MAVLink Protocol Packets
+﻿# MavLinkSharp — MAVLink Library to Parse & Send Telemetry & Messages from Drones, Robots & Autonomous Systems in .NET
 
 [![CI](https://github.com/teklot/MavLinkSharp/actions/workflows/ci.yml/badge.svg)](https://github.com/teklot/MavLinkSharp/actions/workflows/ci.yml)
 [![NuGet Version](https://img.shields.io/nuget/v/MavLinkSharp)](https://www.nuget.org/packages/MavLinkSharp/)
@@ -6,7 +6,28 @@
 [![.NET](https://img.shields.io/badge/.NET-net10.0%20%7C%20netstandard2.0-blue)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/github/license/teklot/MavLinkSharp)](LICENSE)
 
-MavLinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink.io/) v1/v2 protocol messages from drones, UAVs, and autopilot systems. It works with ArduPilot, PX4, and any MAVLink-compatible flight controller. **No code generation required** — load any MAVLink XML dialect at runtime and start parsing telemetry data immediately. It also provides tools for constructing and encoding MAVLink packets for transmission over serial, UDP, TCP, or any other transport.
+MavLinkSharp is a lightweight, high-performance .NET library for parsing and sending [MAVLink](https://mavlink.io/) v1/v2 protocol messages from drones, UAVs, and robots — ArduPilot, PX4, and any MAVLink-compatible vehicle, from aircraft and ground rovers to marine vessels. It parses [MAVLink XML dialects](https://mavlink.io/en/guide/xml_schema.html) **at runtime**, so there's **no code generation** — drop in a dialect, call `MavLink.Initialize()`, and start parsing telemetry immediately. It also encodes and sends MAVLink packets over serial, UDP, TCP, or any other transport, and ships high-level Command and Mission Protocol APIs with built-in timeout and retry.
+
+MAVLink powers far more than aerospace: it's the backbone of **robotics, precision agriculture, environmental monitoring, surveying & inspection, marine robotics, logistics, and autonomous systems** across air, ground, and sea. Wherever there's a remote vehicle or autonomous machine producing telemetry, MavLinkSharp gives .NET developers a fast, reliable way to talk to it.
+
+## Table of Contents
+
+- [Features](#features)
+- [Supported Frameworks](#supported-frameworks)
+- [Getting Started](#getting-started)
+- [Dialect Handling](#dialect-handling)
+- [Filtering Messages](#filtering-messages)
+- [Command Protocol](#command-protocol)
+- [Mission Protocol](#mission-protocol)
+- [Connection Manager](#connection-manager)
+- [MAVLink 2 Signing](#mavlink-2-signing)
+- [Code Example](#code-example)
+- [Constructing and Sending Messages](#constructing-and-sending-messages)
+- [Advanced: Multiple Dialects (MavLinkContext)](#advanced-multiple-dialects-mavlinkcontext)
+- [Advanced: Asynchronous Streaming](#advanced-asynchronous-streaming)
+- [Example Project: MavLinkConsole](#example-project-mavlinkconsole)
+- [Benchmark Project](#benchmark-project-mavlinksharpbenchmark)
+- [MavLinkSharp vs pymavlink](#mavlinksharp-vs-pymavlink)
 
 ## Features
  - **Runtime Dialect Parsing:** Consumes standard MAVLink XML dialect files at runtime. **No code generation required.**
@@ -17,6 +38,7 @@ MavLinkSharp is a lightweight .NET library for parsing [MAVLink](https://mavlink
  - **Minimal Dependencies:** Only requires `System.Memory` and `System.IO.Pipelines`.
  - **MAVLink 2 Signing:** Full support for MAVLink 2 packet signing using HMAC-SHA256 with timestamp validation.
  - **Command Protocol:** High-level API for sending commands (`COMMAND_LONG`/`COMMAND_INT`) and handling acknowledgements (`COMMAND_ACK`) with built-in timeout, retry, and progress support.
+ - **Mission Protocol:** High-level API for uploading, downloading, and clearing flight plans (`MISSION_COUNT`, `MISSION_REQUEST_INT`, `MISSION_ITEM_INT`, `MISSION_ACK`) with built-in timeout and retry.
  - **Connection Manager:** Event-driven `MavLinkConnection` wrapping UDP, TCP, or Serial transports with auto-reconnect, auto-heartbeat, and automatic sequence numbering.
  - **IDisposable Frame:** `Frame` implements `IDisposable` and uses `ArrayPool<byte>.Shared` for zero-allocation buffer management. Call `Dispose()` or use `using` to return buffers to the pool.
  - **Frame.ToString():** Human-readable summary of parsed frames for debugging (e.g., `MAVLink2 Msg=HEARTBEAT Sys=1 Comp=1`).
@@ -53,6 +75,21 @@ Using the library involves four main steps:
     > **Important:** This step is mandatory. Calling `frame.TryParse()` before `MavLink.Initialize()` will result in an `InvalidOperationException`.
 3.  **Parse Incoming Data:** Create a `Frame` object once and reuse it. As you receive data from a MAVLink stream (e.g., a UDP client or serial port), pass the raw `byte[]` packet to the `frame.TryParse()` method.
 4.  **Use the Result:** If `TryParse()` returns `true`, the `frame` object will be populated with the decoded message and its fields.
+
+In just a few lines you can be parsing drone telemetry:
+
+```cs
+using MavLinkSharp;
+
+MavLink.Initialize(DialectType.Common);   // load the common MAVLink dialect at runtime
+
+using var frame = new Frame();             // reuse one Frame for zero-allocation parsing
+if (frame.TryParse(udpBytes))
+{
+    string name = Metadata.Messages[frame.MessageId].Name; // e.g. "ATTITUDE"
+    Console.WriteLine($"Message: {name}");
+}
+```
 
 ## Dialect Handling
 
@@ -227,6 +264,104 @@ var ack = await CommandProtocol.SendCommandAsync(
 if (ack.Success)
     Console.WriteLine("Command accepted!");
 ```
+
+## Mission Protocol
+
+Starting with version 1.11.0, `MavLinkSharp` provides a high-level **Mission Protocol** (`MavLinkSharp.Protocols`) for uploading, downloading, and clearing flight plans (missions) without manual handshake logic. It implements the standard [MAVLink mission service](https://mavlink.io/en/services/mission.html) message flow with built-in timeout and retry.
+
+### API Overview
+
+| Method | Description |
+|--------|-------------|
+| `MissionProtocol.CreateMissionRequestList()` | Builds a `MISSION_REQUEST_LIST` frame to initiate a download |
+| `MissionProtocol.CreateMissionCount()` | Builds a `MISSION_COUNT` frame (initiate upload or acknowledge download) |
+| `MissionProtocol.CreateMissionRequestInt()` | Builds a `MISSION_REQUEST_INT` frame requesting a specific item |
+| `MissionProtocol.CreateMissionItemInt()` | Builds a `MISSION_ITEM_INT` frame carrying a plan item |
+| `MissionProtocol.CreateMissionClearAll()` | Builds a `MISSION_CLEAR_ALL` frame |
+| `MissionProtocol.CreateMissionSetCurrent()` | Builds a `MISSION_SET_CURRENT` frame |
+| `MissionProtocol.TryParseMissionAck()` | Safely parses a `MISSION_ACK` frame into a `MissionAck` |
+| `MissionProtocol.TryParseMissionItem()` | Safely parses a `MISSION_ITEM_INT` frame into a `MissionItem` |
+| `MissionProtocol.UploadMissionAsync()` | Uploads a plan with built-in timeout, retry, and progress |
+| `MissionProtocol.DownloadMissionAsync()` | Downloads a plan with built-in timeout, retry, and progress |
+| `MissionProtocol.ClearMissionAsync()` | Clears a plan and awaits the `MISSION_ACK` |
+
+### MissionItem
+
+```cs
+public class MissionItem
+{
+    public ushort Seq { get; set; }
+    public ushort Command { get; set; }        // MAV_CMD value
+    public MavFrame Frame { get; set; }         // coordinate frame
+    public byte Current { get; set; }
+    public byte AutoContinue { get; set; }
+    public float Param1 { get; set; }
+    public float Param2 { get; set; }
+    public float Param3 { get; set; }
+    public float Param4 { get; set; }
+    public int X { get; set; }                  // lat * 1e7 (global) or x * 1e4 (local)
+    public int Y { get; set; }                  // lon * 1e7 (global) or y * 1e4 (local)
+    public float Z { get; set; }                // altitude
+    public MavMissionType Type { get; set; }
+}
+```
+
+### Quick Start
+
+```cs
+using MavLinkSharp;
+using MavLinkSharp.Protocols;
+
+MavLink.Initialize(DialectType.Common);
+
+// Build a simple mission with two waypoints
+var items = new List<MissionItem>
+{
+    new MissionItem { Seq = 0, Command = 16 /* MAV_CMD_NAV_WAYPOINT */, Frame = MavFrame.GlobalRelativeAltInt,
+        AutoContinue = 1, X = (int)(47.398m * 1e7m), Y = (int)(8.545m * 1e7m), Z = 50.0f, Type = MavMissionType.Mission },
+    new MissionItem { Seq = 1, Command = 21 /* MAV_CMD_NAV_LAND */, Frame = MavFrame.GlobalRelativeAltInt,
+        AutoContinue = 0, X = (int)(47.400m * 1e7m), Y = (int)(8.550m * 1e7m), Z = 0.0f, Type = MavMissionType.Mission }
+};
+
+// Upload the mission (MISSION_COUNT -> MISSION_REQUEST_INT -> MISSION_ITEM_INT -> MISSION_ACK)
+var ack = await MissionProtocol.UploadMissionAsync(
+    items,
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    missionType: MavMissionType.Mission,
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)),
+    timeoutMs: 1500, itemTimeoutMs: 250, maxRetries: 5);
+
+if (ack.Success)
+    Console.WriteLine("Mission uploaded!");
+
+// Download the current mission (MISSION_REQUEST_LIST -> MISSION_COUNT -> MISSION_ITEM_INTs)
+var download = await MissionProtocol.DownloadMissionAsync(
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    missionType: MavMissionType.Mission,
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)));
+
+foreach (var item in download.Items)
+    Console.WriteLine($"Item {item.Seq}: command={item.Command}, x={item.X}, y={item.Y}, z={item.Z}");
+
+// Clear the mission
+var clearAck = await MissionProtocol.ClearMissionAsync(
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)));
+
+if (clearAck.Success)
+    Console.WriteLine("Mission cleared!");
+```
+
+> **Note:** For geofence and rally-point plans, pass `MavMissionType.Fence` or `MavMissionType.Rally` to the `missionType` argument.
 
 ## Connection Manager
 
@@ -683,6 +818,7 @@ The `MavLinkConsole` project serves as a practical example demonstrating how to 
 *   **`MavLinkConsole` (Transmitter & Receiver):** This console application runs two concurrent tasks:
     *   **Transmitter (Tx):** Generates and sends synthetic MAVLink messages (e.g., HEARTBEAT, GPS_RAW_INT, ATTITUDE) over UDP to the default MAVLink port (UDP 14550). It showcases how to construct MAVLink `Frame` objects and serialize them into byte arrays for transmission. Every 5th message uses the **Command Protocol** to send a `COMMAND_LONG` via `CommandProtocol.CreateCommandLong()`.
     *   **Receiver (Rx):** Listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `frame.TryParse()` and access the decoded message fields. When a `COMMAND_LONG` is received, it responds with a `COMMAND_ACK`, which is then displayed via `CommandProtocol.TryParseCommandAck()`. Tx and Rx are displayed in separate halves of the screen. See the source code for details.
+    *   **Mission Sample:** On startup, `MissionSample` runs a self-contained, in-memory demonstration of the **Mission Protocol** — it simulates both a ground station and a flight controller over in-memory channels and exercises mission **upload**, **download**, and **clear** using `MissionProtocol.UploadMissionAsync()`, `DownloadMissionAsync()`, and `ClearMissionAsync()`.
 
 This example provides a quick way to:
 *   **Test your MAVLinkSharp integration:** Verify that your application can correctly send and receive messages.
@@ -693,7 +829,11 @@ This example provides a quick way to:
 
 1.  Navigate to the `MavLinkConsole` project directory in your terminal.
 2.  Run the project using `dotnet run`.
-    *   You will see both `Tx =>` (transmitted) and `Rx =>` (received) messages in the same terminal.
+    *   By default (no arguments) it runs **both** demos: the in-memory Mission Protocol demo, then the UDP Tx/Rx demo. You will see `Mission =>` messages, followed by both `Tx =>` (transmitted) and `Rx =>` (received) messages in the same terminal, updating continuously until you stop it.
+3.  Command-line options:
+    *   `dotnet run` or `dotnet run -- --all` — run both the Mission demo and the UDP Tx/Rx demo.
+    *   `dotnet run -- --tx` — UDP Tx/Rx demo only (continues until stopped).
+    *   `dotnet run -- --mission` — in-memory Mission Protocol demo only (upload/download/clear), then exits.
 
 ## Benchmark Project: MavLinkSharp.Benchmark
 
@@ -730,12 +870,13 @@ If you're coming from the Python ecosystem, you're likely familiar with [pymavli
 | **Streaming** | Built-in `System.IO.Pipelines` support for zero-copy async stream parsing. | Manual buffering required. |
 | **AOT / Native Compilation** | Supports .NET Native AOT — compile to a single native binary with no dependencies. | Not applicable (Python). |
 | **Platform** | Cross-platform (Windows, Linux, macOS) via .NET. | Cross-platform (Python runtime required). |
-| **Typical Use Case** | High-performance .NET applications: GCS software, telemetry gateways, real-time services, embedded Linux systems. | Python scripting, testing, simulation tooling, research workflows, companion-computer utilities. |
+| **Typical Use Case** | High-performance .NET applications across industries: GCS software, robotics, telemetry gateways, real-time services, embedded Linux systems, agriculture, and maritime platforms. | Python scripting, testing, simulation tooling, research workflows, companion-computer utilities. |
 
 ### When to Choose MavLinkSharp
 
 - You're building a .NET application (C#, F#, VB.NET) and want **native performance** with **no code generation overhead**.
 - You need **high-throughput MAVLink parsing** (e.g., recording full telemetry streams, gateway services).
+- You're building robotics or autonomous-systems software across air, ground, or marine platforms.
 - You want **AOT-compiled standalone binaries** for deployment without a runtime.
 - You need built-in **MAVLink 2 signing** support.
 

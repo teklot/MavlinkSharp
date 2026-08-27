@@ -2,7 +2,6 @@ using MavLinkSharp;
 using MavLinkSharp.Connection;
 using MavLinkSharp.Enums;
 using MavLinkSharp.Protocols;
-using System.Net;
 
 namespace MavLinkConsole;
 
@@ -18,6 +17,27 @@ class Program
         // Initialize MavLinkSharp with the common dialect
         MavLink.Initialize(DialectType.Common);
 
+        // Usage:
+        //   MavLinkConsole            -> run both demos (Mission, then the UDP Tx/Rx loop)
+        //   MavLinkConsole --all      -> run both demos (Mission, then the UDP Tx/Rx loop)
+        //   MavLinkConsole --tx       -> run only the UDP Tx/Rx demo (continues until Ctrl+C)
+        //   MavLinkConsole --mission  -> run only the in-memory Mission Protocol demo, then exit
+        bool runMission = args.Length == 0 || args.Contains("--mission") || args.Contains("--all");
+        bool runTxRx = args.Length == 0 || args.Contains("--tx") || args.Contains("--all");
+
+        var ct = new CancellationTokenSource();
+
+        if (runMission)
+            await MissionSample.RunAsync(ct.Token);
+
+        if (runTxRx)
+            await RunTxRxAsync(ct.Token);
+
+        ct.Cancel();
+    }
+
+    private static async Task RunTxRxAsync(CancellationToken cancellationToken)
+    {
         var transport = new UdpTransport(MavLinkUdpPort, TargetIpAddress, MavLinkUdpPort);
         var options = new ConnectionOptions
         {
@@ -27,7 +47,7 @@ class Program
             AutoReconnect = false
         };
 
-        using var connection = new MavLinkConnection(transport, options);
+        await using var connection = new MavLinkConnection(transport, options);
 
         connection.OnCommandAck(result =>
         {
@@ -56,15 +76,12 @@ class Program
                 $"Name: {Metadata.Messages[frame.MessageId].Name}");
         };
 
-        var ct = new CancellationTokenSource();
-        await connection.ConnectAsync(ct.Token);
+        await connection.ConnectAsync(cancellationToken);
 
-        // Run Tx and Rx tasks concurrently
-        var txTask = Task.Run(() => Transmitter.RunAsync(connection, ct.Token));
-        var rxTask = Task.Delay(Timeout.Infinite, ct.Token);
+        // Run Tx and Rx tasks concurrently; the Tx loop runs until cancelled, keeping the app alive.
+        var txTask = Task.Run(() => Transmitter.RunAsync(connection, cancellationToken));
+        var rxTask = Task.Delay(Timeout.Infinite, cancellationToken);
 
-        // Keep the application alive until both tasks complete (which will be never in this case)
-        // or a cancellation token is used. For this example, we just await them.
         await Task.WhenAny(txTask, rxTask);
 
         await connection.DisconnectAsync();
