@@ -19,6 +19,7 @@ MAVLink powers far more than aerospace: it's the backbone of **robotics, precisi
 - [Filtering Messages](#filtering-messages)
 - [Command Protocol](#command-protocol)
 - [Mission Protocol](#mission-protocol)
+- [Parameter Protocol](#parameter-protocol)
 - [Connection Manager](#connection-manager)
 - [MAVLink 2 Signing](#mavlink-2-signing)
 - [Code Example](#code-example)
@@ -39,6 +40,7 @@ MAVLink powers far more than aerospace: it's the backbone of **robotics, precisi
  - **MAVLink 2 Signing:** Full support for MAVLink 2 packet signing using HMAC-SHA256 with timestamp validation.
  - **Command Protocol:** High-level API for sending commands (`COMMAND_LONG`/`COMMAND_INT`) and handling acknowledgements (`COMMAND_ACK`) with built-in timeout, retry, and progress support.
  - **Mission Protocol:** High-level API for uploading, downloading, and clearing flight plans (`MISSION_COUNT`, `MISSION_REQUEST_INT`, `MISSION_ITEM_INT`, `MISSION_ACK`) with built-in timeout and retry.
+ - **Parameter Protocol:** High-level API for reading, streaming, and setting onboard parameters (`PARAM_REQUEST_READ`, `PARAM_REQUEST_LIST`, `PARAM_VALUE`, `PARAM_SET`) with an in-memory typed `ParameterCache` and built-in timeout and retry.
  - **Connection Manager:** Event-driven `MavLinkConnection` wrapping UDP, TCP, or Serial transports with auto-reconnect, auto-heartbeat, and automatic sequence numbering.
  - **IDisposable Frame:** `Frame` implements `IDisposable` and uses `ArrayPool<byte>.Shared` for zero-allocation buffer management. Call `Dispose()` or use `using` to return buffers to the pool.
  - **Frame.ToString():** Human-readable summary of parsed frames for debugging (e.g., `MAVLink2 Msg=HEARTBEAT Sys=1 Comp=1`).
@@ -53,15 +55,6 @@ MAVLink powers far more than aerospace: it's the backbone of **robotics, precisi
 *   **Native AOT Ready**: Uses a high-performance `XmlReader` parser instead of `XmlSerializer` to ensure zero reflection during initialization.
 *   **High Performance**: Leverages modern hardware intrinsics and `Span<T>` for bit-manipulation.
 *   **IsAotCompatible**: Fully compatible with trimmed and AOT-compiled applications.
-
-### Compatible Platforms (Standard 2.0):
-
-*   **.NET Core / .NET (5+):** All versions.
-*   **.NET Framework:** 4.6.1 and later (4.7.2+ recommended).
-*   **Mono:** 5.4 and later.
-*   **Xamarin.iOS:** 10.14 and later.
-*   **Xamarin.Android:** 8.0 and later.
-*   **UWP:** 10.0.16299 and later.
 
 ## Getting Started
 
@@ -362,6 +355,93 @@ if (clearAck.Success)
 ```
 
 > **Note:** For geofence and rally-point plans, pass `MavMissionType.Fence` or `MavMissionType.Rally` to the `missionType` argument.
+
+## Parameter Protocol
+
+Starting with version 1.12.0, `MavLinkSharp` provides a high-level **Parameter Protocol** (`MavLinkSharp.Protocols`) for reading, streaming, and setting onboard parameters without manual handshake logic. It implements the standard [MAVLink parameter service](https://mavlink.io/en/services/parameter.html) message flow with built-in timeout and retry, and includes an in-memory typed parameter cache.
+
+### API Overview
+
+| Method | Description |
+|--------|-------------|
+| `ParameterProtocol.CreateParamRequestRead()` | Builds a `PARAM_REQUEST_READ` frame to read one parameter by id/index |
+| `ParameterProtocol.CreateParamRequestList()` | Builds a `PARAM_REQUEST_LIST` frame to request all parameters |
+| `ParameterProtocol.CreateParamValue()` | Builds a `PARAM_VALUE` frame emitting a single parameter |
+| `ParameterProtocol.CreateParamSet()` | Builds a `PARAM_SET` frame to write a parameter value |
+| `ParameterProtocol.TryParseParamValue()` | Safely parses a `PARAM_VALUE` frame into a `MavParamValue` |
+| `ParameterProtocol.DownloadParametersAsync()` | Requests all parameters and fills a `ParameterCache` with timeout/retry |
+| `ParameterProtocol.ReadParameterAsync()` | Reads a single parameter by id |
+| `ParameterProtocol.SetParameterAsync()` | Sets a parameter and waits for the `PARAM_VALUE` acknowledgement |
+
+### MavParamValue & ParameterCache
+
+```cs
+public class MavParamValue
+{
+    public string ParamId { get; set; }      // up to 16 chars
+    public float Value { get; set; }         // MAVLink wire representation
+    public MavParamType Type { get; set; }
+    public ushort ParamCount { get; set; }
+    public ushort ParamIndex { get; set; }
+    public T Get<T>();                       // typed accessor (int, uint, float, double, ...)
+}
+```
+
+```cs
+public class ParameterCache
+{
+    public int Count { get; }
+    public void Set(MavParamValue value);
+    public MavParamValue? Get(string paramId);
+    public bool TryGet(string paramId, out MavParamValue? value);
+    public bool TryGet<T>(string paramId, out T value);  // typed access
+    public IEnumerable<MavParamValue> Values { get; }
+}
+```
+
+`MavParamType` mirrors `MAV_PARAM_TYPE` (`UInt8`, `Int8`, `UInt16`, `Int16`, `UInt32`, `Int32`, `UInt64`, `Int64`, `Real32`, `Real64`).
+
+### Quick Start
+
+```cs
+using MavLinkSharp;
+using MavLinkSharp.Protocols;
+
+MavLink.Initialize(DialectType.Common);
+
+// 1. Download all parameters into an in-memory cache
+var download = await ParameterProtocol.DownloadParametersAsync(
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)));
+
+foreach (var p in download.Cache.Values)
+    Console.WriteLine($"{p.ParamId} = {p.Value}");
+
+// 2. Read a single parameter by id
+var read = await ParameterProtocol.ReadParameterAsync(
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    paramId: "THR_MAX",
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)));
+Console.WriteLine($"{read.ParamId} = {read.Value}");
+
+// 3. Set a parameter (awaits the PARAM_VALUE acknowledgement)
+var set = await ParameterProtocol.SetParameterAsync(
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    paramId: "THR_MAX", value: 850f, type: MavParamType.Real32,
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)));
+Console.WriteLine($"Set {set.ParamId} = {set.Value}");
+```
+
+> **Note:** Extended parameters (`PARAM_EXT_*`) and transactional set with `PARAM_ACK_TRANSACTION` are planned for a future release; the standard flow is supported here.
 
 ## Connection Manager
 
@@ -819,6 +899,7 @@ The `MavLinkConsole` project serves as a practical example demonstrating how to 
     *   **Transmitter (Tx):** Generates and sends synthetic MAVLink messages (e.g., HEARTBEAT, GPS_RAW_INT, ATTITUDE) over UDP to the default MAVLink port (UDP 14550). It showcases how to construct MAVLink `Frame` objects and serialize them into byte arrays for transmission. Every 5th message uses the **Command Protocol** to send a `COMMAND_LONG` via `CommandProtocol.CreateCommandLong()`.
     *   **Receiver (Rx):** Listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `frame.TryParse()` and access the decoded message fields. When a `COMMAND_LONG` is received, it responds with a `COMMAND_ACK`, which is then displayed via `CommandProtocol.TryParseCommandAck()`. Tx and Rx are displayed in separate halves of the screen. See the source code for details.
     *   **Mission Sample:** On startup, `MissionSample` runs a self-contained, in-memory demonstration of the **Mission Protocol** — it simulates both a ground station and a flight controller over in-memory channels and exercises mission **upload**, **download**, and **clear** using `MissionProtocol.UploadMissionAsync()`, `DownloadMissionAsync()`, and `ClearMissionAsync()`.
+    *   **Parameter Sample:** `ParameterSample` runs a self-contained, in-memory demonstration of the **Parameter Protocol** — it simulates a ground station and a flight controller over in-memory channels and exercises parameter **download**, **read**, and **set** using `ParameterProtocol.DownloadParametersAsync()`, `ReadParameterAsync()`, and `SetParameterAsync()`.
 
 This example provides a quick way to:
 *   **Test your MAVLinkSharp integration:** Verify that your application can correctly send and receive messages.
@@ -829,11 +910,32 @@ This example provides a quick way to:
 
 1.  Navigate to the `MavLinkConsole` project directory in your terminal.
 2.  Run the project using `dotnet run`.
-    *   By default (no arguments) it runs **both** demos: the in-memory Mission Protocol demo, then the UDP Tx/Rx demo. You will see `Mission =>` messages, followed by both `Tx =>` (transmitted) and `Rx =>` (received) messages in the same terminal, updating continuously until you stop it.
-3.  Command-line options:
-    *   `dotnet run` or `dotnet run -- --all` — run both the Mission demo and the UDP Tx/Rx demo.
-    *   `dotnet run -- --tx` — UDP Tx/Rx demo only (continues until stopped).
+    *   By default (no arguments) it shows an **interactive options menu**:
+
+        ```
+        === MavLinkConsole ===
+
+        Protocol demos (in-memory, complete automatically):
+          1. Mission Protocol demo
+          2. Parameter Protocol demo
+          3. All protocol demos
+
+        UDP telemetry demo (S=pause, R=resume, Enter=back):
+          4. Tx/Rx demo
+
+          0. Exit
+        ```
+
+        Options **1–3** run the in-memory protocol demo(s) to completion (no duration prompt) and return to the menu. Option **4** streams UDP telemetry in a split-pane Tx/Rx view. While streaming, use the following keyboard controls:
+        *   **S** — Pause the stream (Tx stops sending)
+        *   **R** — Resume the stream (Tx starts sending again)
+        *   **Enter** — Stop the stream and return to the menu
+3.  Command-line options (run non-interactively):
+    *   `dotnet run -- --all` — run the Mission, Parameter, and UDP Tx/Rx demos.
+    *   `dotnet run -- --tx` — UDP Tx/Rx demo only (streams until Ctrl+C in non-interactive mode).
     *   `dotnet run -- --mission` — in-memory Mission Protocol demo only (upload/download/clear), then exits.
+    *   `dotnet run -- --param` — in-memory Parameter Protocol demo only (download/read/set), then exits.
+    *   `dotnet run -- --help` — show usage help.
 
 ## Benchmark Project: MavLinkSharp.Benchmark
 

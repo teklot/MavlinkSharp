@@ -24,7 +24,7 @@
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<PackageReleaseNotes>
-			- Added Mission Protocol support for uploading, downloading, and clearing flight plans with built-in timeout and retry.
+			- Added Parameter Protocol support for reading, streaming, and setting onboard parameters with an in-memory cache and built-in timeout and retry.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

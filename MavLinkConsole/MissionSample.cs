@@ -11,17 +11,26 @@ namespace MavLinkConsole;
 /// </summary>
 static class MissionSample
 {
-    // Two one-way in-memory links: GCS -> Vehicle and Vehicle -> GCS.
-    private static readonly Channel<Frame> GcsToVehicle = Channel.CreateUnbounded<Frame>();
-    private static readonly Channel<Frame> VehicleToGcs = Channel.CreateUnbounded<Frame>();
-
-    // "Mission storage" on the simulated vehicle.
-    private static readonly List<MissionItem> StoredMission = new();
-    private static readonly object VehicleLock = new();
-    private static int _expectedMissionCount;
-
     public static async Task RunAsync(CancellationToken cancellationToken = default)
     {
+        // Fresh simulation state per run so the demo is re-runnable (e.g. from the menu loop).
+        var sim = new MissionSimulation();
+        await sim.RunAsync(cancellationToken);
+    }
+
+    private sealed class MissionSimulation
+    {
+        // Two one-way in-memory links: GCS -> Vehicle and Vehicle -> GCS.
+        private readonly Channel<Frame> GcsToVehicle = Channel.CreateUnbounded<Frame>();
+        private readonly Channel<Frame> VehicleToGcs = Channel.CreateUnbounded<Frame>();
+
+        // "Mission storage" on the simulated vehicle.
+        private readonly List<MissionItem> StoredMission = new();
+        private readonly object VehicleLock = new();
+        private int _expectedMissionCount;
+
+        public async Task RunAsync(CancellationToken cancellationToken)
+        {
         TerminalLayout.WriteTx("Mission => start (in-memory GCS <-> vehicle demo)");
 
         // Wire up the simulated vehicle as a background responder.
@@ -81,7 +90,7 @@ static class MissionSample
         TerminalLayout.WriteTx("Mission => done");
     }
 
-    private static List<MissionItem> BuildMission()
+    private List<MissionItem> BuildMission()
     {
         return new List<MissionItem>
         {
@@ -107,7 +116,7 @@ static class MissionSample
 
     // ---------- Simulated flight controller ----------
 
-    private static async Task VehicleResponderAsync(CancellationToken ct)
+    private async Task VehicleResponderAsync(CancellationToken ct)
     {
         try
         {
@@ -123,7 +132,7 @@ static class MissionSample
         }
     }
 
-    private static async Task HandleMissionRequestAsync(Frame request, CancellationToken ct)
+    private async Task HandleMissionRequestAsync(Frame request, CancellationToken ct)
     {
         switch (request.MessageId)
         {
@@ -226,4 +235,5 @@ static class MissionSample
 
     private static Task SendFrameAsync(Channel<Frame> link, Frame frame, CancellationToken ct)
         => link.Writer.WriteAsync(frame, ct).AsTask();
+    }
 }

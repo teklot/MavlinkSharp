@@ -6,24 +6,61 @@ public static class TerminalLayout
     private static int _width;
     private static int _height;
     private static int _splitRow;
+    private static bool _split;
+    private static bool _plainConsole;
     private static readonly List<string> _txBuffer = new();
     private static readonly List<string> _rxBuffer = new();
 
-    public static void Initialize()
+    /// <summary>
+    /// Initializes the console layout.
+    /// </summary>
+    /// <param name="split">
+    /// When <c>true</c>, renders a two-pane Tx/Rx layout split by a divider (used by the live UDP stream).
+    /// When <c>false</c>, renders a full-width single pane with no divider (used by the in-memory protocol demos).
+    /// </param>
+    public static void Initialize(bool split = true)
     {
-        Console.Clear();
-        Console.CursorVisible = false;
+        _plainConsole = !TryClear();
+        try
+        {
+            Console.CursorVisible = !_plainConsole;
+        }
+        catch (IOException)
+        {
+            _plainConsole = true;
+        }
+        _split = split;
+        _txBuffer.Clear();
+        _rxBuffer.Clear();
         UpdateDimensions();
         RedrawAll();
     }
 
+    private static bool TryClear()
+    {
+        try
+        {
+            Console.Clear();
+            return true;
+        }
+        catch (IOException)
+        {
+            // No attached console (e.g. piped input); fall back to plain line output.
+            return false;
+        }
+    }
+
     private static bool UpdateDimensions()
     {
+        if (_plainConsole)
+            return false;
+
         if (Console.WindowWidth != _width || Console.WindowHeight != _height)
         {
             _width = Console.WindowWidth;
             _height = Console.WindowHeight;
-            _splitRow = _height / 2;
+            _splitRow = _split ? _height / 2 : _height;
+            if (_splitRow < 1) _splitRow = 1;
             return true;
         }
         return false;
@@ -31,7 +68,7 @@ public static class TerminalLayout
 
     private static void DrawSeparator()
     {
-        if (_splitRow < _height)
+        if (_split && _splitRow < _height)
         {
             Console.SetCursorPosition(0, _splitRow);
             Console.Write(new string('-', _width));
@@ -42,6 +79,12 @@ public static class TerminalLayout
     {
         lock (_lock)
         {
+            if (_plainConsole)
+            {
+                Console.WriteLine(message);
+                return;
+            }
+
             _txBuffer.Add(message);
             bool resized = UpdateDimensions();
             TrimBuffers();
@@ -61,6 +104,19 @@ public static class TerminalLayout
     {
         lock (_lock)
         {
+            // In single-pane mode, route Rx messages into the same full-width stream as Tx.
+            if (!_split)
+            {
+                WriteTx(message);
+                return;
+            }
+
+            if (_plainConsole)
+            {
+                Console.WriteLine(message);
+                return;
+            }
+
             _rxBuffer.Add(message);
             bool resized = UpdateDimensions();
             TrimBuffers();
@@ -78,13 +134,14 @@ public static class TerminalLayout
 
     private static void TrimBuffers()
     {
-        int maxTx = _splitRow;
+        int maxTx = _split ? _splitRow : _height;
+        if (maxTx < 1) maxTx = 1;
         while (_txBuffer.Count > maxTx && _txBuffer.Count > 0)
         {
             _txBuffer.RemoveAt(0);
         }
 
-        int maxRx = _height - _splitRow - 1;
+        int maxRx = _split ? _height - _splitRow - 1 : 0;
         if (maxRx < 0) maxRx = 0;
         while (_rxBuffer.Count > maxRx && _rxBuffer.Count > 0)
         {
@@ -94,10 +151,19 @@ public static class TerminalLayout
 
     private static void RedrawAll()
     {
-        Console.Clear();
-        DrawSeparator();
-        RedrawTx();
-        RedrawRx();
+        if (_plainConsole)
+            return;
+        try
+        {
+            Console.Clear();
+            DrawSeparator();
+            RedrawTx();
+            RedrawRx();
+        }
+        catch (IOException)
+        {
+            // No attached console; output was already routed through plain WriteLine calls.
+        }
     }
 
     private static void RedrawTx()

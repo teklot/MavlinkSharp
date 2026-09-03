@@ -9,7 +9,7 @@ static class Transmitter
     private static readonly Random random = new();
     private static int messageCount = 0;
 
-    public static async Task RunAsync(MavLinkConnection connection, CancellationToken cancellationToken = default)
+    public static async Task RunAsync(MavLinkConnection connection, CancellationToken cancellationToken = default, ManualResetEventSlim? pauseEvent = null)
     {
         var messageIds = Metadata.Messages.Keys.ToList();
         if (!messageIds.Any())
@@ -20,9 +20,17 @@ static class Transmitter
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            try
+            {
+                pauseEvent?.Wait(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
             messageCount++;
 
-            // Every 5th message, demonstrate CommandProtocol by sending a COMMAND_LONG
             if (messageCount % 5 == 0)
             {
                 await SendCommandLongAsync(connection, cancellationToken);
