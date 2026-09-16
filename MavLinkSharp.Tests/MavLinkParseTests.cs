@@ -541,6 +541,49 @@ namespace MavLinkSharp.Tests
             Assert.Equal(ErrorReason.BadSignature, parsedFrame.ErrorReason);
         }
 
+        [Fact]
+        public void SignedFrame_InvalidSignature_KeepsBadSignatureReason()
+        {
+            // A signed frame whose signature bytes happen to contain a MAVLink start marker.
+            // The span-level parser must still report BadSignature (the real frame's error),
+            // not FrameTooShort from a later scan that lands inside the signature bytes.
+            var key1 = MavLinkSigning.CreateRandomKey();
+            var key2 = MavLinkSigning.CreateRandomKey();
+            var signing1 = new MavLinkSigning(key1);
+
+            var frame = new Frame();
+            frame.StartMarker = Protocol.V2.StartMarker;
+            frame.SystemId = 1;
+            frame.ComponentId = 1;
+            frame.PacketSequence = 0;
+            frame.MessageId = 0; // HEARTBEAT
+            frame.Message = MavLinkContext.Default.Metadata.MessagesDictionary[0];
+            frame.EnableSigning(signing1);
+            frame.SetFields(new Dictionary<string, object>()
+            {
+                { "type", (byte)8 },
+                { "autopilot", (byte)0 },
+                { "base_mode", (byte)0 },
+                { "custom_mode", (uint)0 },
+                { "system_status", (byte)0 },
+                { "mavlink_version", (byte)3 }
+            });
+
+            var packet = frame.ToBytes();
+
+            // Corrupt the last two signature bytes into V2/V1 start markers with too
+            // little data after them (guarantees the old scan produced FrameTooShort).
+            packet[packet.Length - 2] = Protocol.V2.StartMarker;
+            packet[packet.Length - 1] = Protocol.V1.StartMarker;
+
+            var parsedFrame = new Frame();
+            parsedFrame.Signing = new MavLinkSigning(key2);
+            var result = parsedFrame.TryParse(packet);
+
+            Assert.False(result);
+            Assert.Equal(ErrorReason.BadSignature, parsedFrame.ErrorReason);
+        }
+
         private void WriteValue(ref Span<byte> span, Type type, object value)
         {
             if (type == typeof(char))

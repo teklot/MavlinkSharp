@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using MavLinkSharp;
@@ -17,12 +18,24 @@ namespace MavLinkSharp.Tests
 
         public bool IsConnected => _connected;
         public IReadOnlyList<byte[]> SentData => _sentData;
+        public int ConnectCount { get; private set; }
+        public int FailNextConnectCount { get; set; }
+        public bool FailConnectAlways { get; set; }
 
         public void EnqueueReceiveData(byte[] data) => _receiveQueue.Enqueue(data);
         public void ClearSentData() => _sentData.Clear();
 
+        public void SimulateDisconnect() => _connected = false;
+
         public Task ConnectAsync(CancellationToken cancellationToken = default)
         {
+            ConnectCount++;
+            if (FailConnectAlways || FailNextConnectCount > 0)
+            {
+                if (!FailConnectAlways) FailNextConnectCount--;
+                return Task.FromException(new SocketException((int)SocketError.ConnectionRefused));
+            }
+
             _connected = true;
             return Task.CompletedTask;
         }
@@ -328,6 +341,61 @@ namespace MavLinkSharp.Tests
 
             // Should be safe to dispose multiple times
             connection.Dispose();
+        }
+
+        [Fact]
+        public async Task ConnectAsync_FailedInitialConnect_ReconnectsInBackground()
+        {
+            var transport = new MockTransport { FailNextConnectCount = 2 };
+            var connection = new MavLinkConnection(transport, new ConnectionOptions
+            {
+                HeartbeatIntervalMs = 0,
+                ReconnectDelayMs = 50,
+                MaxReconnectAttempts = 100
+            });
+
+            bool connected = false;
+            connection.Connected += (s, e) => connected = true;
+
+            var ct = TestContext.Current.CancellationToken;
+
+            // Must not throw: initial connect fails but auto-reconnect retries in the background.
+            await connection.ConnectAsync(ct);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+            try
+            {
+                while ((!connection.IsConnected || !connected) && !timeoutCts.IsCancellationRequested)
+                    await Task.Delay(10, timeoutCts.Token);
+            }
+            catch (OperationCanceledException) { }
+
+            Assert.True(connection.IsConnected);
+            Assert.True(connected);
+            Assert.True(transport.ConnectCount >= 3);
+
+            await connection.DisposeAsync();
+        }
+
+        [Fact]
+        public async Task DisposeAsync_CompletesWhileReconnectKeepsFailing()
+        {
+            var transport = new MockTransport { FailConnectAlways = true };
+            var connection = new MavLinkConnection(transport, new ConnectionOptions
+            {
+                HeartbeatIntervalMs = 0,
+                ReconnectDelayMs = 10,
+                MaxReconnectAttempts = int.MaxValue
+            });
+
+            var ct = TestContext.Current.CancellationToken;
+            await connection.ConnectAsync(ct); // starts endless background retry, does not throw
+
+            var disposeTask = connection.DisposeAsync().AsTask();
+            var completed = await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(5), ct));
+
+            Assert.Same(disposeTask, completed);
         }
 
         private Frame BuildHeartbeatFrame(byte systemId)

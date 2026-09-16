@@ -462,7 +462,7 @@ Starting with version 1.9.0, `MavLinkSharp` provides a **Connection Manager** (`
 - **Command ACK handler:** `OnCommandAck(Action<CommandResult>)` for automatic COMMAND_ACK processing.
 - **Auto-sequence numbering:** `PacketSequence` is incremented automatically on each send.
 - **Auto-heartbeat:** Configurable interval for sending HEARTBEAT messages.
-- **Auto-reconnect:** Reconnects on transport failure with configurable delay and max attempts.
+- **Auto-reconnect:** Reconnects on transport failure and on an *initial* connect failure with configurable delay and max attempts. TCP client transports defer connecting until `ConnectAsync()`, so you can create them before the remote endpoint is available; `MavLinkConnection.ConnectAsync()` returns immediately and reconnects in the background until the target comes online.
 - **IAsyncDisposable:** Clean async shutdown of transport and background tasks.
 
 ### Quick Start
@@ -580,6 +580,32 @@ connection.OnPacketReceived += frame =>
 
 await connection.ConnectAsync();
 ```
+
+### TCP Client Example (start before the server is up)
+
+Client-mode transports defer connecting until `ConnectAsync()`, so a ground station can start
+before the vehicle connects. With `AutoReconnect` enabled, `ConnectAsync()` returns immediately
+and retries in the background, firing `Connected` once the target becomes available.
+
+```cs
+var transport = new TcpTransport("192.168.1.10", 5760); // may be unreachable right now
+var connection = new MavLinkConnection(transport, new ConnectionOptions
+{
+    SystemId = 1,
+    ComponentId = 1,
+    AutoReconnect = true,
+    ReconnectDelayMs = 5000,
+    MaxReconnectAttempts = int.MaxValue // retry indefinitely
+});
+
+connection.Connected += (s, e) => Console.WriteLine("Vehicle connected!");
+connection.Disconnected += (s, e) => Console.WriteLine("Connection lost, reconnecting...");
+
+await connection.ConnectAsync(); // returns immediately; reconnects in the background
+```
+
+You can also pass a pre-connected `TcpClient`: `new TcpTransport(tcpClient)`. The transport
+captures the remote endpoint so it can reconnect when a connection is lost.
 
 ### API Reference
 

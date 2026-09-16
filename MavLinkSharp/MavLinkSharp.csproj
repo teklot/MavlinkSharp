@@ -24,7 +24,10 @@
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<PackageReleaseNotes>
-			- Added Parameter Protocol support for reading, streaming, and setting onboard parameters with an in-memory cache and built-in timeout and retry.
+			- Fixed TCP client auto-reconnect: lost connections now re-establish the socket reliably.
+			- TcpTransport constructors now accept hostnames, defer connection to ConnectAsync, and normalize IPv4-mapped addresses.
+			- Fixed a hang in DisposeAsync caused by an endless reconnect loop.
+			- Fixed non-deterministic error reason in Frame.TryParse when signature bytes contain start markers.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

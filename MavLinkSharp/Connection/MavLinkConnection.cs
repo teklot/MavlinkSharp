@@ -67,6 +67,8 @@ namespace MavLinkSharp.Connection
         private readonly object _sequenceLock = new object();
         private byte _packetSequence;
         private CancellationTokenSource? _receiveCts;
+        private CancellationTokenSource? _reconnectCts;
+        private CancellationToken _userToken;
         private Task? _receiveTask;
         private Task? _heartbeatTask;
         private Task? _reconnectTask;
@@ -152,8 +154,29 @@ namespace MavLinkSharp.Connection
         {
             _userDisconnected = false;
             _context.ThrowIfNotInitialized();
+            _userToken = cancellationToken;
 
-            await _transport.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _transport.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                if (!_options.AutoReconnect || _userDisconnected || _disposed)
+                    throw;
+
+                // Initial connect failed (e.g. the remote endpoint is not reachable yet).
+                // Reconnect in the background and return instead of throwing, so callers
+                // can start a GCS before the target is available. The Connected event
+                // fires once a connection is eventually established.
+                _reconnectTask = RunReconnectAsync();
+                return;
+            }
+
             OnConnected();
 
             _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -346,6 +369,9 @@ namespace MavLinkSharp.Connection
                 {
                     if (!cancellationToken.IsCancellationRequested)
                     {
+                        // Stop the receive and heartbeat loops of the broken connection.
+                        _receiveCts?.Cancel();
+
                         OnDisconnected(new DisconnectedEventArgs(ex));
                         if (_options.AutoReconnect && !_userDisconnected)
                         {
@@ -474,29 +500,47 @@ namespace MavLinkSharp.Connection
 
         private async Task RunReconnectAsync()
         {
+            var reconnectCts = new CancellationTokenSource();
+            _reconnectCts = reconnectCts;
+
             int attempt = 0;
-            while (attempt < _options.MaxReconnectAttempts && !_userDisconnected)
+            try
             {
-                try
+                while (attempt < _options.MaxReconnectAttempts && !_userDisconnected && !_disposed)
                 {
-                    await Task.Delay(_options.ReconnectDelayMs).ConfigureAwait(false);
-                    await _transport.ConnectAsync().ConfigureAwait(false);
-
-                    OnConnected();
-                    _receiveCts?.Dispose();
-                    _receiveCts = new CancellationTokenSource();
-                    _receiveTask = RunReceiveLoopAsync(_receiveCts.Token);
-
-                    if (_options.HeartbeatIntervalMs > 0)
+                    try
                     {
-                        _heartbeatTask = RunHeartbeatLoopAsync(_receiveCts.Token);
+                        await Task.Delay(_options.ReconnectDelayMs, reconnectCts.Token).ConfigureAwait(false);
+                        await _transport.ConnectAsync(reconnectCts.Token).ConfigureAwait(false);
+
+                        // Link the new receive/heartbeat loops to the original caller token (if any).
+                        _receiveCts?.Dispose();
+                        _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(_userToken);
+                        _receiveTask = RunReceiveLoopAsync(_receiveCts.Token);
+
+                        if (_options.HeartbeatIntervalMs > 0)
+                        {
+                            _heartbeatTask = RunHeartbeatLoopAsync(_receiveCts.Token);
+                        }
+
+                        OnConnected();
+                        return;
                     }
-                    return;
+                    catch (OperationCanceledException) when (reconnectCts.IsCancellationRequested)
+                    {
+                        // Stopped via dispose/disconnect/cancel.
+                        return;
+                    }
+                    catch
+                    {
+                        attempt++;
+                    }
                 }
-                catch
-                {
-                    attempt++;
-                }
+            }
+            finally
+            {
+                reconnectCts.Dispose();
+                _reconnectCts = null;
             }
         }
 
@@ -516,6 +560,8 @@ namespace MavLinkSharp.Connection
             {
                 _receiveCts.Cancel();
             }
+
+            _reconnectCts?.Cancel();
 
             if (_receiveTask != null)
             {
@@ -555,6 +601,8 @@ namespace MavLinkSharp.Connection
 
             _receiveCts?.Dispose();
             _receiveCts = null;
+            _reconnectCts?.Dispose();
+            _reconnectCts = null;
         }
 
         private async Task<Frame?> ReceiveFrameAsync(CancellationToken cancellationToken)
@@ -616,6 +664,7 @@ namespace MavLinkSharp.Connection
             if (!_disposed)
             {
                 _disposed = true;
+                _userDisconnected = true;
                 await StopBackgroundTasksAsync().ConfigureAwait(false);
                 await _transport.DisposeAsync().ConfigureAwait(false);
             }

@@ -554,6 +554,12 @@ namespace MavLinkSharp
 
             #region Implementation
             int offset = 0;
+
+            // Error of the first structurally-complete frame candidate. Later scan attempts
+            // land on random bytes inside the packet (e.g. signature bytes that happen to match
+            // a start marker) and must not overwrite the reason from the real frame.
+            ErrorReason? firstCompleteFrameError = null;
+
             while (offset < packet.Length)
             {
                 var slice = packet.Slice(offset);
@@ -589,6 +595,13 @@ namespace MavLinkSharp
 
                 if (nextMarkerIndex == -1) break;
 
+                // A structurally-complete frame (header + payload + checksum) fits at this marker.
+                bool isCompleteCandidate = packet.Length - (offset + nextMarkerIndex) >= 2 &&
+                    packet.Length - (offset + nextMarkerIndex) >=
+                        (isV2 ? Protocol.V2.HeaderLength : Protocol.V1.HeaderLength) +
+                        packet[offset + nextMarkerIndex + 1] +
+                        Protocol.V1.ChecksumLength;
+
                 // Attempt to parse at the found marker
                 if (isV2)
                 {
@@ -599,13 +612,26 @@ namespace MavLinkSharp
                     if (TryParseV1(packet, offset + nextMarkerIndex)) return true;
                 }
 
+                if (isCompleteCandidate && firstCompleteFrameError == null)
+                {
+                    firstCompleteFrameError = this.ErrorReason;
+                }
+
                 // If parsing failed at this marker, skip it and continue searching from the next byte
                 offset += nextMarkerIndex + 1;
             }
 
-            // If we found markers but none were valid, ErrorReason will hold the last failure reason.
+            // If a structurally-complete frame was found but failed (e.g. BadSignature, BadChecksum),
+            // report that reason instead of the last failure from scanning inside the packet.
+            if (firstCompleteFrameError != null)
+            {
+                this.ErrorReason = firstCompleteFrameError.Value;
+            }
+
+            // If we found markers but none were structurally complete,
+            // ErrorReason will hold the last failure reason.
             // If we never found any markers at all, set it to StartMarkerNotFound.
-            if (this.ErrorReason == ErrorReason.None)
+            else if (this.ErrorReason == ErrorReason.None)
             {
                 this.ErrorReason = ErrorReason.StartMarkerNotFound;
             }
