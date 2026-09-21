@@ -28,6 +28,7 @@
 			- TcpTransport constructors now accept hostnames, defer connection to ConnectAsync, and normalize IPv4-mapped addresses.
 			- Fixed a hang in DisposeAsync caused by an endless reconnect loop.
 			- Fixed non-deterministic error reason in Frame.TryParse when signature bytes contain start markers.
+			- Added a DocFX API reference and GitHub Pages documentation site.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

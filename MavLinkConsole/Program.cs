@@ -1,3 +1,4 @@
+using System.Net;
 using MavLinkSharp;
 using MavLinkSharp.Connection;
 using MavLinkSharp.Enums;
@@ -11,6 +12,7 @@ namespace MavLinkConsole;
 /// Command-line options run a specific demo non-interactively:
 ///   MavLinkConsole --all       -> run all demos (Mission, Param, then the UDP Tx/Rx loop)
 ///   MavLinkConsole --tx        -> run only the UDP Tx/Rx demo (continues until Ctrl+C)
+///   MavLinkConsole --rx        -> run only the UDP Rx demo, listening on the default port (continues until Ctrl+C)
 ///   MavLinkConsole --mission   -> run only the in-memory Mission Protocol demo, then exit
 ///   MavLinkConsole --param     -> run only the in-memory Parameter Protocol demo, then exit
 ///   MavLinkConsole --help/-h   -> show usage help
@@ -26,17 +28,19 @@ class Program
         // Initialize MavLinkSharp with the common dialect
         MavLink.Initialize(DialectType.Common);
 
+        var options = CliOptions.Parse(args);
+
         // If help was requested, print usage and exit.
-        if (args.Contains("--help") || args.Contains("-h"))
+        if (options.ShowHelp)
         {
-            PrintHelp();
+            CliOptions.PrintHelp();
             return;
         }
 
         // If any meaningful argument was provided, run non-interactively.
         if (args.Length > 0)
         {
-            await RunCliAsync(args);
+            await RunCliAsync(options);
             return;
         }
 
@@ -44,11 +48,12 @@ class Program
         await RunMenuAsync();
     }
 
-    private static async Task RunCliAsync(string[] args)
+    private static async Task RunCliAsync(CliOptions options)
     {
-        bool runMission = args.Contains("--mission") || args.Contains("--all");
-        bool runParam = args.Contains("--param") || args.Contains("--all");
-        bool runTxRx = args.Contains("--tx") || args.Contains("--all");
+        bool runMission = options.RunAll || options.RunMission;
+        bool runParam = options.RunAll || options.RunParam;
+        bool runTxRx = options.RunAll || options.RunTxRx;
+        bool runRxOnly = options.RunRxOnly;
 
         // Protocol demos use a full-width single pane (no Tx/Rx divider).
         if (runMission || runParam)
@@ -66,6 +71,13 @@ class Program
             TerminalLayout.Initialize(split: true);
             await RunTxRxAsync(CancellationToken.None);
         }
+
+        // The UDP Rx-only listener uses the split-pane layout and runs until Ctrl+C.
+        if (runRxOnly)
+        {
+            TerminalLayout.Initialize(split: true);
+            await RunTxRxAsync(CancellationToken.None, transmit: false);
+        }
     }
 
     private static async Task RunMenuAsync()
@@ -82,6 +94,8 @@ class Program
             Console.WriteLine();
             Console.WriteLine("UDP telemetry demo (S=pause, R=resume, Enter=back):");
             Console.WriteLine("  4. Tx/Rx demo");
+            Console.WriteLine("UDP receiver demo (Enter=back):");
+            Console.WriteLine("  5. Rx-only demo (listens on default port 14550)");
             Console.WriteLine();
             Console.WriteLine("  0. Exit");
             Console.WriteLine();
@@ -98,11 +112,11 @@ class Program
             if (choice == 0)
                 return;
 
-            if (choice is >= 1 and <= 4)
+            if (choice >= 1 && choice <= 5)
             {
                 await RunMenuChoiceAsync(choice);
 
-                if (choice != 4)
+                if (choice != 4 && choice != 5)
                 {
                     Console.WriteLine();
                     PressEnterToContinue();
@@ -138,42 +152,52 @@ class Program
                 using (var cts = new CancellationTokenSource())
                 using (var pauseEvent = new ManualResetEventSlim(true))
                 {
-                    _ = Task.Run(() =>
-                    {
-                        while (!cts.IsCancellationRequested)
-                        {
-                            try
-                            {
-                                if (Console.KeyAvailable)
-                                {
-                                    var key = Console.ReadKey(intercept: true);
-                                    if (key.Key == ConsoleKey.Enter)
-                                    {
-                                        cts.Cancel();
-                                        break;
-                                    }
-                                    else if (key.Key == ConsoleKey.S)
-                                    {
-                                        pauseEvent.Reset();
-                                        TerminalLayout.WriteTx("--- Tx paused (press R to resume) ---");
-                                    }
-                                    else if (key.Key == ConsoleKey.R)
-                                    {
-                                        pauseEvent.Set();
-                                        TerminalLayout.WriteTx("--- Tx resumed ---");
-                                    }
-                                }
-                                Thread.Sleep(50);
-                            }
-                            catch (InvalidOperationException)
-                            {
-                                break;
-                            }
-                        }
-                    });
+                    _ = Task.Run(() => MonitorKeys(cts, pauseEvent));
                     await RunTxRxAsync(cts.Token, pauseEvent);
                 }
                 break;
+            case 5:
+                TerminalLayout.Initialize(split: true);
+                using (var cts = new CancellationTokenSource())
+                {
+                    _ = Task.Run(() => MonitorKeys(cts, null));
+                    await RunTxRxAsync(cts.Token, null, transmit: false);
+                }
+                break;
+        }
+    }
+
+    private static void MonitorKeys(CancellationTokenSource cts, ManualResetEventSlim? pauseEvent)
+    {
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                if (Console.KeyAvailable)
+                {
+                    var key = Console.ReadKey(intercept: true);
+                    if (key.Key == ConsoleKey.Enter)
+                    {
+                        cts.Cancel();
+                        break;
+                    }
+                    else if (key.Key == ConsoleKey.S && pauseEvent != null)
+                    {
+                        pauseEvent.Reset();
+                        TerminalLayout.WriteTx("--- Tx paused (press R to resume) ---");
+                    }
+                    else if (key.Key == ConsoleKey.R && pauseEvent != null)
+                    {
+                        pauseEvent.Set();
+                        TerminalLayout.WriteTx("--- Tx resumed ---");
+                    }
+                }
+                Thread.Sleep(50);
+            }
+            catch (InvalidOperationException)
+            {
+                break;
+            }
         }
     }
 
@@ -196,23 +220,7 @@ class Program
         Console.ReadLine();
     }
 
-    private static void PrintHelp()
-    {
-        Console.WriteLine("MavLinkConsole demos");
-        Console.WriteLine();
-        Console.WriteLine("Usage:");
-        Console.WriteLine("  MavLinkConsole [options]");
-        Console.WriteLine();
-        Console.WriteLine("Options:");
-        Console.WriteLine("  (no arguments)                 Show the interactive options menu.");
-        Console.WriteLine("  --all                          Run all demos (Mission, Param, then UDP Tx/Rx).");
-        Console.WriteLine("  --tx                           Run only the UDP Tx/Rx demo (continues until Ctrl+C).");
-        Console.WriteLine("  --mission                      Run only the in-memory Mission Protocol demo.");
-        Console.WriteLine("  --param                        Run only the in-memory Parameter Protocol demo.");
-        Console.WriteLine("  --help, -h                     Show this help.");
-    }
-
-    private static async Task RunTxRxAsync(CancellationToken cancellationToken, ManualResetEventSlim? pauseEvent = null)
+    private static async Task RunTxRxAsync(CancellationToken cancellationToken, ManualResetEventSlim? pauseEvent = null, bool transmit = true)
     {
         // Wait for any previous connection cleanup to finish (port release).
         if (_previousCleanup is { } prev)
@@ -220,7 +228,11 @@ class Program
             try { await prev; } catch { }
         }
 
-        var transport = new UdpTransport(MavLinkUdpPort, TargetIpAddress, MavLinkUdpPort);
+        // Rx-only mode binds to the default port without configuring a remote endpoint.
+        var transport = transmit
+            ? new UdpTransport(MavLinkUdpPort, TargetIpAddress, MavLinkUdpPort)
+            : new UdpTransport(new IPEndPoint(IPAddress.Any, MavLinkUdpPort));
+
         var options = new ConnectionOptions
         {
             SystemId = 1,
@@ -244,9 +256,10 @@ class Program
 
             if (frame.MessageId == CommandProtocol.CommandLongId)
             {
-                TerminalLayout.WriteRx($"Rx => Seq: {frame.PacketSequence:D3}, COMMAND_LONG (command {frame.Fields["command"]}) - sending ACK");
+                TerminalLayout.WriteRx($"Rx => Seq: {frame.PacketSequence:D3}, COMMAND_LONG (command {frame.Fields["command"]}) - {(transmit ? "sending ACK" : "no ACK (Rx-only)")}");
 
-                _ = SendCommandAckAsync(connection, frame);
+                if (transmit)
+                    _ = SendCommandAckAsync(connection, frame);
                 return;
             }
 
@@ -260,8 +273,10 @@ class Program
 
         await connection.ConnectAsync(cancellationToken);
 
-        // Run Tx and Rx tasks concurrently; the Tx loop runs until cancelled, keeping the app alive.
-        var txTask = Task.Run(() => Transmitter.RunAsync(connection, cancellationToken, pauseEvent));
+        // Run the Tx loop only in transmit mode; otherwise keep the app alive until cancelled.
+        var txTask = transmit
+            ? Task.Run(() => Transmitter.RunAsync(connection, cancellationToken, pauseEvent))
+            : Task.Delay(Timeout.Infinite, cancellationToken);
         var rxTask = Task.Delay(Timeout.Infinite, cancellationToken);
 
         await Task.WhenAny(txTask, rxTask);

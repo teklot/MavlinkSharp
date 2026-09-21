@@ -5,6 +5,7 @@
 [![NuGet Downloads](https://img.shields.io/nuget/dt/MavLinkSharp)](https://www.nuget.org/packages/MavLinkSharp/)
 [![.NET](https://img.shields.io/badge/.NET-net10.0%20%7C%20netstandard2.0-blue)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/github/license/teklot/MavLinkSharp)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-MavLinkSharp-blue)](https://teklot.github.io/MavlinkSharp/)
 
 MavLinkSharp is a lightweight, high-performance .NET library for parsing and sending [MAVLink](https://mavlink.io/) v1/v2 protocol messages from drones, UAVs, and robots — ArduPilot, PX4, and any MAVLink-compatible vehicle, from aircraft and ground rovers to marine vessels. It parses [MAVLink XML dialects](https://mavlink.io/en/guide/xml_schema.html) **at runtime**, so there's **no code generation** — drop in a dialect, call `MavLink.Initialize()`, and start parsing telemetry immediately. It also encodes and sends MAVLink packets over serial, UDP, TCP, or any other transport, and ships high-level Command and Mission Protocol APIs with built-in timeout and retry.
 
@@ -959,6 +960,7 @@ This example provides a quick way to:
 3.  Command-line options (run non-interactively):
     *   `dotnet run -- --all` — run the Mission, Parameter, and UDP Tx/Rx demos.
     *   `dotnet run -- --tx` — UDP Tx/Rx demo only (streams until Ctrl+C in non-interactive mode).
+    *   `dotnet run -- --rx` — UDP Rx only, listening on the default port 14550 (until Ctrl+C).
     *   `dotnet run -- --mission` — in-memory Mission Protocol demo only (upload/download/clear), then exits.
     *   `dotnet run -- --param` — in-memory Parameter Protocol demo only (download/read/set), then exits.
     *   `dotnet run -- --help` — show usage help.
