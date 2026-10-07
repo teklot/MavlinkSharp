@@ -28,7 +28,7 @@ MAVLink powers far more than aerospace: it's the backbone of **robotics, precisi
 - [Constructing and Sending Messages](#constructing-and-sending-messages)
 - [Advanced: Multiple Dialects (MavLinkContext)](#advanced-multiple-dialects-mavlinkcontext)
 - [Advanced: Asynchronous Streaming](#advanced-asynchronous-streaming)
-- [Example Project: MavLinkConsole](#example-project-mavlinkconsole)
+- [Example Project: MavLinkSharp.Demo](#example-project-mavlinksharpdemo)
 - [Benchmark Project](#benchmark-project-mavlinksharpbenchmark)
 - [MavLinkSharp vs pymavlink](#mavlinksharp-vs-pymavlink)
 
@@ -947,11 +947,11 @@ if (frame.TryParse(sequence, out var consumed, out var examined))
 }
 ```
 
-## Example Project: MavLinkConsole
+## Example Project: MavLinkSharp.Demo
 
-The `MavLinkConsole` project serves as a practical example demonstrating how to use the `MavLinkSharp` library for both sending and receiving MAVLink messages over UDP, all within a single console application. It's particularly useful for testing, development, and quickly observing MAVLink communication.
+The `MavLinkSharp.Demo` project serves as a practical example demonstrating how to use the `MavLinkSharp` library for both sending and receiving MAVLink messages over UDP, all within a single console application. It's particularly useful for testing, development, and quickly observing MAVLink communication.
 
-*   **`MavLinkConsole` (Transmitter & Receiver):** This console application runs two concurrent tasks:
+*   **`MavLinkSharp.Demo` (Transmitter & Receiver):** This console application runs two concurrent tasks:
     *   **Transmitter (Tx):** Generates and sends synthetic MAVLink messages (e.g., HEARTBEAT, GPS_RAW_INT, ATTITUDE) over UDP to the default MAVLink port (UDP 14550). It showcases how to construct MAVLink `Frame` objects and serialize them into byte arrays for transmission. Every 5th message uses the **Command Protocol** to send a `COMMAND_LONG` via `CommandProtocol.CreateCommandLong()`.
     *   **Receiver (Rx):** Listens for incoming MAVLink UDP packets on the default MAVLink port (UDP 14550). It demonstrates how to parse raw byte arrays into `Frame` objects using `frame.TryParse()` and access the decoded message fields. When a `COMMAND_LONG` is received, it responds with a `COMMAND_ACK`, which is then displayed via `CommandProtocol.TryParseCommandAck()`. Tx and Rx are displayed in separate halves of the screen. See the source code for details.
     *   **Mission Sample:** On startup, `MissionSample` runs a self-contained, in-memory demonstration of the **Mission Protocol** — it simulates both a ground station and a flight controller over in-memory channels and exercises mission **upload**, **download**, and **clear** using `MissionProtocol.UploadMissionAsync()`, `DownloadMissionAsync()`, and `ClearMissionAsync()`.
@@ -964,12 +964,12 @@ This example provides a quick way to:
 
 **To run this example:**
 
-1.  Navigate to the `MavLinkConsole` project directory in your terminal.
+1.  Navigate to the `MavLinkSharp.Demo` project directory in your terminal.
 2.  Run the project using `dotnet run`.
     *   By default (no arguments) it shows an **interactive options menu**:
 
         ```
-        === MavLinkConsole ===
+        === MavLinkSharp.Demo ===
 
         Protocol demos (in-memory, complete automatically):
           1. Mission Protocol demo

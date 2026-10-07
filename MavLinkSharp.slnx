@@ -4,7 +4,7 @@
     <File Path="LICENSE" />
     <File Path="README.md" />
   </Folder>
-  <Project Path="MavLinkConsole/MavLinkConsole.csproj" />
+  <Project Path="MavLinkSharp.Demo/MavLinkSharp.Demo.csproj" />
   <Project Path="MavLinkSharp/MavLinkSharp.csproj" />
   <Project Path="MavLinkSharp.Benchmark/MavLinkSharp.Benchmark.csproj" />
   <Project Path="MavLinkSharp.Cli/MavLinkSharp.Cli.csproj" />
