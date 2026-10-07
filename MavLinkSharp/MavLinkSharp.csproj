@@ -4,7 +4,6 @@
 		<TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<Title>MAVLinkSharp</Title>
-		<Authors>TekLot,$(AssemblyName)</Authors>
 		<Description>MavlinkSharp is a lightweight .NET library for parsing MAVLink v1/v2 raw messages using standard or custom dialects. It is extremely fast, flexible, and easy to use, and also provides tools for constructing and encoding MAVLink packets for transmission over any communication protocol.</Description>
 		<PackageId>MavLinkSharp</PackageId>
 		<PackageReadmeFile>README.md</PackageReadmeFile>

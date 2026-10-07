@@ -22,10 +22,10 @@ Wire ordering follows the MAVLink serialization rules — fields are sorted by n
 `Frame` is both the parse target and the encode/preview builder:
 
 - **Parse:** `Frame.TryParse(ReadOnlySpan<byte>)` or the streaming `ReadOnlySequence<byte>` overload finds the start marker, decodes header/payload, verifies CRC (and, when enabled, MAVLink 2 signature), and stores the decoded `Message` plus a buffer-backed payload.
-- **Access:** `Fields` lazily decodes the payload into typed values; typed accessors such as `GetFloat`, `GetByte`, `GetUInt16` read field spans directly.
+- **Access:** `Fields` lazily decodes the payload into typed values; typed accessors such as `GetSingle`, `GetByte`, `GetUInt16` read field spans directly.
 - **Encode:** `SetFields` writes values into the payload at their computed offsets; `ToBytes` assembles the wire packet.
 - **Lifecycle:** `Frame` is `IDisposable` and returns its buffer to `ArrayPool<byte>.Shared`; reuse one `Frame` instance for zero-allocation parsing.
-- **Buffer ownership:** The parsed payload is referenced, not copied — keep the source buffer alive until you are done with the frame, or copy fields you retain.
+- **Buffer ownership:** `TryParse` copies the payload into the frame's own pooled buffer, so the source buffer does not need to stay alive. Copy anything you want to retain before calling `Dispose()` — disposal zeroes and returns the pooled arrays. Note that a frame delivered to `MavLinkConnection.PacketReceived` is shared with every other handler in the same dispatch, so neither retain nor dispose it.
 
 ## Connection Manager
 

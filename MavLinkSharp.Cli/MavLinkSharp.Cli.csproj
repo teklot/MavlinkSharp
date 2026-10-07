@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Title>mavlinkx</Title>
+    <Description>MAVLink diagnostic CLI: capture, inspect, replay, and dialect introspection.</Description>
+    <AssemblyName>mavlinkx</AssemblyName>
+    <RootNamespace>MavLinkSharp.Cli</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>mavlinkx</ToolCommandName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PackageId>MavLinkSharp.Cli</PackageId>
+    <PackageOutputPath>$(BaseOutputPath)tools</PackageOutputPath>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageTags>mavlink;mavlink2;mavlink-cli;mavlinkx;drone;uav;uas;autopilot;ardupilot;px4;gcs;ground-station;telemetry;diagnostics;inspector;trace;capture;replay;ros;cli</PackageTags>
+    <PackageProjectUrl>https://github.com/teklot/mavlinksharp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/teklot/mavlinksharp.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PackageReleaseNotes>
+      - Initial release of the mavlinkx global tool.
+      - capture: record MAVLink traffic to .raw or .jsonl traces, with filters, duration/packet limits, and optional incoming signing verification.
+      - inspect: decode traces offline with per field values and units, summaries, or JSON.
+      - replay: resend traces to an endpoint, byte exact from raw bytes or re encoded from decoded fields, with timing and speed control.
+      - schema: inspect messages, fields, enums, and enum values of any dialect.
+      - info: report the tool version, runtime, architecture, and dialect contents.
+      - Dialect selection via --dialect (bundled or file), with dialect recorded in .jsonl headers.
+    </PackageReleaseNotes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MavLinkSharp\MavLinkSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MavLinkSharp.Tests" />
+  </ItemGroup>
+
+</Project>

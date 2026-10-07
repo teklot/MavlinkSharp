@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MavLinkSharp\MavLinkSharp.csproj" />
+    <ProjectReference Include="..\MavLinkSharp.Cli\MavLinkSharp.Cli.csproj" />
   </ItemGroup>
 
 </Project>

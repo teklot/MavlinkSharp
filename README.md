@@ -14,6 +14,7 @@ MAVLink powers far more than aerospace: it's the backbone of **robotics, precisi
 ## Table of Contents
 
 - [Features](#features)
+- [MAVLink CLI (mavlinkx)](#mavlink-cli-mavlinkx)
 - [Supported Frameworks](#supported-frameworks)
 - [Getting Started](#getting-started)
 - [Dialect Handling](#dialect-handling)
@@ -45,6 +46,34 @@ MAVLink powers far more than aerospace: it's the backbone of **robotics, precisi
  - **Connection Manager:** Event-driven `MavLinkConnection` wrapping UDP, TCP, or Serial transports with auto-reconnect, auto-heartbeat, and automatic sequence numbering.
  - **IDisposable Frame:** `Frame` implements `IDisposable` and uses `ArrayPool<byte>.Shared` for zero-allocation buffer management. Call `Dispose()` or use `using` to return buffers to the pool.
  - **Frame.ToString():** Human-readable summary of parsed frames for debugging (e.g., `MAVLink2 Msg=HEARTBEAT Sys=1 Comp=1`).
+
+## MAVLink CLI (mavlinkx)
+
+`mavlinkx` is a companion global tool for working with MAVLink traffic without writing any code: capture a live link, inspect a capture offline, replay one to another endpoint, and read dialect definitions.
+
+```bash
+dotnet tool install --global MavLinkSharp.Cli
+```
+
+```bash
+# Record 60 seconds of UDP traffic as byte exact packets
+mavlinkx capture udp://:14550 -o flight.raw --duration 60
+
+# See what is in the capture, with per field values and units
+mavlinkx inspect flight.raw -v --limit 20
+
+# Resend it somewhere else, reproducing the original timing
+mavlinkx replay flight.raw --target udp://127.0.0.1:14551 --timing
+
+# Look up definitions
+mavlinkx schema message ATTITUDE
+mavlinkx schema enum MAV_TYPE
+mavlinkx info
+```
+
+Endpoints are URIs: `udp://:14550`, `tcp://:5760` to accept a connection, `tcp://host:5760` to connect out, or `serial://COM3:57600`. Traces are written as `.raw` packet bytes or as JSON lines, and any dialect can be selected with `--dialect`.
+
+See [the CLI documentation](https://teklot.github.io/MavlinkSharp/cli.html) for the full reference.
 
 ## Supported Frameworks
 
@@ -180,7 +209,7 @@ After initialization and any fine-tuning, process incoming byte streams with `fr
 
 ## Command Protocol
 
-Starting with version 1.8.0, `MavLinkSharp` provides a high-level **Command Protocol** (`MavLinkSharp.Protocols`) for sending MAVLink commands and processing acknowledgements without manual handshake logic.
+`MavLinkSharp` provides a high-level **Command Protocol** (`MavLinkSharp.Protocols`) for sending MAVLink commands and processing acknowledgements without manual handshake logic.
 
 ### API Overview
 
@@ -261,7 +290,7 @@ if (ack.Success)
 
 ## Mission Protocol
 
-Starting with version 1.11.0, `MavLinkSharp` provides a high-level **Mission Protocol** (`MavLinkSharp.Protocols`) for uploading, downloading, and clearing flight plans (missions) without manual handshake logic. It implements the standard [MAVLink mission service](https://mavlink.io/en/services/mission.html) message flow with built-in timeout and retry.
+`MavLinkSharp` provides a high-level **Mission Protocol** (`MavLinkSharp.Protocols`) for uploading, downloading, and clearing flight plans (missions) without manual handshake logic. It implements the standard [MAVLink mission service](https://mavlink.io/en/services/mission.html) message flow with built-in timeout and retry.
 
 ### API Overview
 
@@ -359,7 +388,7 @@ if (clearAck.Success)
 
 ## Parameter Protocol
 
-Starting with version 1.12.0, `MavLinkSharp` provides a high-level **Parameter Protocol** (`MavLinkSharp.Protocols`) for reading, streaming, and setting onboard parameters without manual handshake logic. It implements the standard [MAVLink parameter service](https://mavlink.io/en/services/parameter.html) message flow with built-in timeout and retry, and includes an in-memory typed parameter cache.
+`MavLinkSharp` provides a high-level **Parameter Protocol** (`MavLinkSharp.Protocols`) for reading, streaming, and setting onboard parameters without manual handshake logic. It implements the standard [MAVLink parameter service](https://mavlink.io/en/services/parameter.html) message flow with built-in timeout and retry, and includes an in-memory typed parameter cache.
 
 ### API Overview
 
@@ -446,7 +475,7 @@ Console.WriteLine($"Set {set.ParamId} = {set.Value}");
 
 ## Connection Manager
 
-Starting with version 1.9.0, `MavLinkSharp` provides a **Connection Manager** (`MavLinkSharp.Connection`) that wraps transport layers with an event-driven API, automatic sequence numbering, heartbeats, and reconnection support.
+`MavLinkSharp` provides a **Connection Manager** (`MavLinkSharp.Connection`) that wraps transport layers with an event-driven API, automatic sequence numbering, heartbeats, and reconnection support.
 
 ### Supported Transports
 
@@ -576,7 +605,7 @@ var client = await listener.AcceptTcpClientAsync();
 var transport = new TcpTransport(client);
 var connection = new MavLinkConnection(transport);
 
-connection.OnPacketReceived += frame =>
+connection.PacketReceived += frame =>
     Console.WriteLine($"Received: {Metadata.Messages[frame.MessageId].Name}");
 
 await connection.ConnectAsync();
@@ -654,7 +683,7 @@ captures the remote endpoint so it can reconnect when a connection is lost.
 
 ## MAVLink 2 Signing
 
-Starting with version 1.7.0, `MavLinkSharp` supports **MAVLink 2 packet signing** using HMAC-SHA256. This provides authentication and integrity verification for MAVLink 2 packets.
+`MavLinkSharp` supports **MAVLink 2 packet signing** using HMAC-SHA256. This provides authentication and integrity verification for MAVLink 2 packets.
 
 ### Key Features
 - **HMAC-SHA256 Signatures:** 13-byte signatures (1 byte link ID + 6 bytes timestamp + 6 bytes truncated HMAC)
@@ -855,7 +884,7 @@ udpClient.Send(packet, packet.Length, remoteEndPoint);
 ```
 
 ## Advanced: Multiple Dialects (MavLinkContext)
-Starting with version 1.5.0, `MavLinkSharp` supports handling multiple MAVLink dialects simultaneously through the `MavLinkContext` class. This is useful for complex gateways or ground stations that communicate with different types of vehicles.
+`MavLinkSharp` supports handling multiple MAVLink dialects simultaneously through the `MavLinkContext` class. This is useful for complex gateways or ground stations that communicate with different types of vehicles.
 
 ```cs
 // 1. Create separate contexts for different dialects

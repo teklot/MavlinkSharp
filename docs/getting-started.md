@@ -33,7 +33,7 @@ if (frame.TryParse(udpBytes))
     Console.WriteLine($"Message: {name}");
 
     // Typed field access
-    float roll = frame.GetFloat("roll");
+    float roll = frame.GetSingle("roll");
 }
 ```
 
