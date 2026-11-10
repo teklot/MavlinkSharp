@@ -23,13 +23,7 @@
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <PackageReleaseNotes>
-      - Initial release of the mavlinkx global tool.
-      - capture: record MAVLink traffic to .raw or .jsonl traces, with filters, duration/packet limits, and optional incoming signing verification.
-      - inspect: decode traces offline with per field values and units, summaries, or JSON.
-      - replay: resend traces to an endpoint, byte exact from raw bytes or re encoded from decoded fields, with timing and speed control.
-      - schema: inspect messages, fields, enums, and enum values of any dialect.
-      - info: report the tool version, runtime, architecture, and dialect contents.
-      - Dialect selection via --dialect (bundled or file), with dialect recorded in .jsonl headers.
+      - Updated to the latest MavLinkSharp library, adding the extended parameter protocol (PARAM_EXT_*) and parameter transactions.
     </PackageReleaseNotes>
   </PropertyGroup>
 

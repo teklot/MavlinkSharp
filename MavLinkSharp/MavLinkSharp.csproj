@@ -23,11 +23,8 @@
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<PackageReleaseNotes>
-			- Fixed TCP client auto-reconnect: lost connections now re-establish the socket reliably.
-			- TcpTransport constructors now accept hostnames, defer connection to ConnectAsync, and normalize IPv4-mapped addresses.
-			- Fixed a hang in DisposeAsync caused by an endless reconnect loop.
-			- Fixed non-deterministic error reason in Frame.TryParse when signature bytes contain start markers.
-			- Added a DocFX API reference and GitHub Pages documentation site.
+			- Added extended parameter protocol support (PARAM_EXT_*): string and 64-bit parameter values with typed MavParamExtValue (Get&lt;T&gt;/Create&lt;T&gt;), ParameterExtCache, and download/read/set operations with timeout and retry, including PARAM_ACK_IN_PROGRESS handling.
+			- Added parameter transactions (MAV_CMD_PARAM_TRANSACTION): BeginTransactionAsync, CommitTransactionAsync, CancelTransactionAsync, SetParameterTransactionalAsync, and SetExtParameterTransactionalAsync for atomic multi-step parameter writes.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

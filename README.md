@@ -42,7 +42,7 @@ MAVLink powers far more than aerospace: it's the backbone of **robotics, precisi
  - **MAVLink 2 Signing:** Full support for MAVLink 2 packet signing using HMAC-SHA256 with timestamp validation.
  - **Command Protocol:** High-level API for sending commands (`COMMAND_LONG`/`COMMAND_INT`) and handling acknowledgements (`COMMAND_ACK`) with built-in timeout, retry, and progress support.
  - **Mission Protocol:** High-level API for uploading, downloading, and clearing flight plans (`MISSION_COUNT`, `MISSION_REQUEST_INT`, `MISSION_ITEM_INT`, `MISSION_ACK`) with built-in timeout and retry.
- - **Parameter Protocol:** High-level API for reading, streaming, and setting onboard parameters (`PARAM_REQUEST_READ`, `PARAM_REQUEST_LIST`, `PARAM_VALUE`, `PARAM_SET`) with an in-memory typed `ParameterCache` and built-in timeout and retry.
+ - **Parameter Protocol:** High-level API for reading, streaming, and setting onboard parameters (`PARAM_REQUEST_READ`, `PARAM_REQUEST_LIST`, `PARAM_VALUE`, `PARAM_SET`) with an in-memory typed `ParameterCache` and built-in timeout and retry. Extended parameters (`PARAM_EXT_*`) add string and 64-bit value support, and parameter transactions (`MAV_CMD_PARAM_TRANSACTION`) provide atomic multi-step writes.
  - **Connection Manager:** Event-driven `MavLinkConnection` wrapping UDP, TCP, or Serial transports with auto-reconnect, auto-heartbeat, and automatic sequence numbering.
  - **IDisposable Frame:** `Frame` implements `IDisposable` and uses `ArrayPool<byte>.Shared` for zero-allocation buffer management. Call `Dispose()` or use `using` to return buffers to the pool.
  - **Frame.ToString():** Human-readable summary of parsed frames for debugging (e.g., `MAVLink2 Msg=HEARTBEAT Sys=1 Comp=1`).
@@ -471,7 +471,86 @@ var set = await ParameterProtocol.SetParameterAsync(
 Console.WriteLine($"Set {set.ParamId} = {set.Value}");
 ```
 
-> **Note:** Extended parameters (`PARAM_EXT_*`) and transactional set with `PARAM_ACK_TRANSACTION` are planned for a future release; the standard flow is supported here.
+### Extended Parameters (PARAM_EXT_*)
+
+Extended parameters carry their value as raw bytes instead of a single `float`, adding support for 64-bit types and strings. `MavParamExtValue` handles the encoding and decoding (little-endian for numeric `MavParamExtType` values, null-terminated string for `MavParamExtType.Custom`), and `ParameterExtCache` provides the same typed in-memory caching as `ParameterCache`.
+
+| Method | Description |
+|--------|-------------|
+| `ParameterProtocol.CreateParamExtRequestRead()` | Builds a `PARAM_EXT_REQUEST_READ` frame to read one extended parameter by id/index |
+| `ParameterProtocol.CreateParamExtRequestList()` | Builds a `PARAM_EXT_REQUEST_LIST` frame to request all extended parameters |
+| `ParameterProtocol.CreateParamExtValue()` | Builds a `PARAM_EXT_VALUE` frame emitting a single extended parameter |
+| `ParameterProtocol.CreateParamExtSet()` | Builds a `PARAM_EXT_SET` frame to write an extended parameter value |
+| `ParameterProtocol.CreateParamExtAck()` | Builds a `PARAM_EXT_ACK` frame acknowledging a `PARAM_EXT_SET` |
+| `ParameterProtocol.TryParseParamExtValue()` | Safely parses a `PARAM_EXT_VALUE` frame into a `MavParamExtValue` |
+| `ParameterProtocol.TryParseParamExtAck()` | Safely parses a `PARAM_EXT_ACK` frame into a `ParamExtAck` |
+| `ParameterProtocol.DownloadExtParametersAsync()` | Requests all extended parameters and fills a `ParameterExtCache` with timeout/retry |
+| `ParameterProtocol.ReadExtParameterAsync()` | Reads a single extended parameter by id |
+| `ParameterProtocol.SetExtParameterAsync()` | Sets an extended parameter and waits for the final `PARAM_EXT_ACK` (follows `InProgress`) |
+
+```cs
+// Typed value creation: type inferred from the value (strings map to Custom)
+var gain = MavParamExtValue.Create("CFG_GAIN", Math.PI);      // Real64
+var mode = MavParamExtValue.Create("CFG_MODE", "AUTO");        // Custom (string)
+var count = MavParamExtValue.Create("CFG_CNT", (ushort)7);     // UInt16
+
+// Read an extended (string) parameter
+var read = await ParameterProtocol.ReadExtParameterAsync(
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    paramId: "CFG_MODE",
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)));
+Console.WriteLine(read.Get<string>());   // e.g. "AUTO"
+
+// Set an extended parameter (awaits the final PARAM_EXT_ACK)
+var ack = await ParameterProtocol.SetExtParameterAsync(
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    value: MavParamExtValue.Create("CFG_MODE", "GUIDED"),
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)));
+Console.WriteLine(ack.Get<string>());   // "GUIDED"
+```
+
+### Parameter Transactions
+
+Parameter transactions make multi-step parameter writes atomic: the transaction is opened with `MAV_CMD_PARAM_TRANSACTION`, parameters are written through the classic or extended transport, and the transaction is committed (persisting all writes) or cancelled (discarding them).
+
+| Method | Description |
+|--------|-------------|
+| `ParameterProtocol.BeginTransactionAsync()` | Sends `MAV_CMD_PARAM_TRANSACTION` (Start) and awaits the `COMMAND_ACK` |
+| `ParameterProtocol.CommitTransactionAsync()` | Sends `MAV_CMD_PARAM_TRANSACTION` (Commit) and awaits the `COMMAND_ACK` |
+| `ParameterProtocol.CancelTransactionAsync()` | Sends `MAV_CMD_PARAM_TRANSACTION` (Cancel) and awaits the `COMMAND_ACK` |
+| `ParameterProtocol.SetParameterTransactionalAsync()` | Atomic classic write: Start → `PARAM_SET` → `PARAM_ACK_TRANSACTION` → Commit |
+| `ParameterProtocol.SetExtParameterTransactionalAsync()` | Atomic extended write: Start → `PARAM_EXT_SET` → `PARAM_EXT_ACK` → Commit |
+
+```cs
+// Atomic write via the classic param transport.
+// Requires a dialect that defines PARAM_ACK_TRANSACTION, e.g. DialectType.Development.
+MavLink.Initialize(DialectType.Development);
+
+var ack = await ParameterProtocol.SetParameterTransactionalAsync(
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    paramId: "THR_MAX", value: 850f, type: MavParamType.UInt16,
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)));
+
+// Atomic write via the extended param transport (works with DialectType.Common)
+var extAck = await ParameterProtocol.SetExtParameterTransactionalAsync(
+    MavLinkContext.Default,
+    systemId: 1, componentId: 1,
+    targetSystem: 2, targetComponent: 1,
+    value: MavParamExtValue.Create("CFG_MODE", "GUIDED"),
+    sendAsync: (bytes, ct) => udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint),
+    receiveFrameAsync: ct => Task.FromResult(await ReceiveNextFrameAsync(ct)));
+```
+
+> **Note:** If a step fails, the transaction is *not* cancelled automatically; send `CancelTransactionAsync` yourself if you need to abandon it.
 
 ## Connection Manager
 

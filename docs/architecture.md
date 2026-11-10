@@ -45,7 +45,7 @@ High-level, asynchronous flows built on the connection layer with built-in timeo
 
 - **Command Protocol** — `COMMAND_LONG` / `COMMAND_INT` with `COMMAND_ACK` handling and progress support.
 - **Mission Protocol** — upload, download, and clear flight plans (`MISSION_COUNT`, `MISSION_ITEM_INT`, `MISSION_ACK`, ...).
-- **Parameter Protocol** — request/read/set onboard parameters with an in-memory typed `ParameterCache`.
+- **Parameter Protocol** — request/read/set onboard parameters with an in-memory typed `ParameterCache`; extended `PARAM_EXT_*` parameters add string and 64-bit values, and `MAV_CMD_PARAM_TRANSACTION` provides atomic multi-step writes.
 
 ## MAVLink 2 Signing
 

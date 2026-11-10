@@ -127,8 +127,8 @@ mavlinkx schema enum MAV_TYPE
 Reports the tool and runtime versions and what the selected dialect contains:
 
 ```console
-mavlinkx         1.14.0
-MavLinkSharp     1.14.0
+mavlinkx         1.15.0
+MavLinkSharp     1.15.0
 dialect          common
 runtime          .NET 10.0.12
 architecture     X64
@@ -146,7 +146,7 @@ enums            136
 A `.jsonl` trace starts with a header record that carries the format version, the dialect, the tool version, and the message and enum counts, so a trace stays interpretable after the tool is upgraded:
 
 ```json
-{"record":"header","formatVersion":1,"createdUtc":"2026-01-01T00:00:00.0000000Z","dialect":"common","tool":"1.14.0","raw":true,"messageCount":221,"enumCount":136}
+{"record":"header","formatVersion":1,"createdUtc":"2026-01-01T00:00:00.0000000Z","dialect":"common","tool":"1.15.0","raw":true,"messageCount":221,"enumCount":136}
 ```
 
 ## A typical session
